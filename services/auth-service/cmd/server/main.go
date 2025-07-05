@@ -1,0 +1,86 @@
+package main
+
+import (
+	"database/sql"
+	"log"
+	"net/http"
+	"os"
+
+	_ "github.com/lib/pq"
+	"github.com/dqx0/glen/auth-service/internal/handlers"
+	"github.com/dqx0/glen/auth-service/internal/repository"
+	"github.com/dqx0/glen/auth-service/internal/service"
+)
+
+func main() {
+	// データベース接続
+	db, err := connectDB()
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	defer db.Close()
+
+	// RSA鍵ペアの取得（実際の環境では環境変数やファイルから読み込み）
+	privateKey, publicKey, err := service.GenerateTestKeyPair()
+	if err != nil {
+		log.Fatal("Failed to generate key pair:", err)
+	}
+
+	// 依存関係の構築
+	tokenRepo := repository.NewTokenRepository(db)
+	jwtService, err := service.NewJWTService(privateKey, publicKey)
+	if err != nil {
+		log.Fatal("Failed to create JWT service:", err)
+	}
+	authService := service.NewAuthService(tokenRepo, jwtService)
+	authHandler := handlers.NewAuthHandler(authService)
+
+	// ルーターの設定
+	mux := http.NewServeMux()
+	
+	// 認証エンドポイント
+	mux.HandleFunc("/api/v1/auth/login", authHandler.Login)
+	mux.HandleFunc("/api/v1/auth/refresh", authHandler.RefreshToken)
+	mux.HandleFunc("/api/v1/auth/api-keys", authHandler.CreateAPIKey)
+	mux.HandleFunc("/api/v1/auth/revoke", authHandler.RevokeToken)
+	mux.HandleFunc("/api/v1/auth/tokens", authHandler.ListTokens)
+	mux.HandleFunc("/api/v1/auth/validate-api-key", authHandler.ValidateAPIKey)
+
+	// ヘルスチェック
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	// サーバー起動
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8081"
+	}
+
+	log.Printf("Auth service starting on port %s", port)
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		log.Fatal("Server failed to start:", err)
+	}
+}
+
+func connectDB() (*sql.DB, error) {
+	// 環境変数からデータベース接続情報を取得
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		// 開発環境用のデフォルト設定
+		dbURL = "postgres://glen_user:glen_password@localhost:5432/glen_auth?sslmode=disable"
+	}
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return nil, err
+	}
+
+	// 接続テスト
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
