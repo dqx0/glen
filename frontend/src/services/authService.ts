@@ -100,7 +100,7 @@ export class AuthService {
     try {
       const response = await this.refreshToken({
         refresh_token: refreshToken,
-        username: '', // 実際のアプリケーションでは適切なユーザー名を使用
+        username: localStorage.getItem('username') || '', // Retrieve username from local storage
       });
 
       // 新しいアクセストークンを保存
