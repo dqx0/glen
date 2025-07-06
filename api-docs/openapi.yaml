@@ -1,0 +1,1273 @@
+openapi: 3.0.3
+info:
+  title: Glen ID Platform API
+  description: |
+    Glen ID Platformは、統合認証・認可基盤です。複数の認証方式（パスワード、WebAuthn、ソーシャルログイン）をサポートし、
+    外部サービスに対してシングルサインオン（SSO）機能を提供します。
+    
+    ## 主要機能
+    - ユーザー管理（登録、認証、プロフィール管理）
+    - JWT ベースの認証・認可
+    - WebAuthn（生体認証、セキュリティキー）
+    - ソーシャルログイン（Google、GitHub、Discord）
+    - API キー管理
+    - 外部サービス統合
+    
+    ## 認証フロー
+    1. **パスワード認証**: 従来のユーザー名/パスワード
+    2. **WebAuthn認証**: 生体認証やセキュリティキーによるパスワードレス認証
+    3. **ソーシャル認証**: OAuth2によるソーシャルプロバイダー連携
+    
+    ## セキュリティ
+    - JWT トークン（アクセストークン + リフレッシュトークン）
+    - PKCE（Proof Key for Code Exchange）対応
+    - CORS設定による適切なアクセス制御
+    - レート制限
+  version: "1.0.0"
+  contact:
+    name: Glen ID Platform
+    url: https://github.com/dqx0/glen
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.glen.dqx0.com/api/v1
+    description: 本番環境
+  - url: https://staging-api.glen.dqx0.com/api/v1
+    description: ステージング環境
+  - url: http://localhost:8080/api/v1
+    description: 開発環境
+
+tags:
+  - name: auth
+    description: 認証・認可関連
+  - name: users
+    description: ユーザー管理
+  - name: webauthn
+    description: WebAuthn認証
+  - name: social
+    description: ソーシャルログイン
+  - name: tokens
+    description: トークン・APIキー管理
+  - name: external
+    description: 外部サービス統合
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  # ===== 認証・認可 =====
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: ユーザーログイン
+      description: ユーザー名/パスワードによる認証を行い、JWTトークンを発行します
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: "user@example.com"
+              password: "securepassword123"
+      responses:
+        '200':
+          description: ログイン成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: トークンリフレッシュ
+      description: リフレッシュトークンを使用してアクセストークンを更新します
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: トークンリフレッシュ成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: ログアウト
+      description: 現在のセッションを終了し、トークンを無効化します
+      responses:
+        '200':
+          description: ログアウト成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/verify:
+    get:
+      tags: [auth]
+      summary: トークン検証
+      description: |
+        現在のトークンが有効かどうかを検証します。
+        外部サービスがユーザーの認証状態を確認する際に使用します。
+      responses:
+        '200':
+          description: トークンが有効
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenVerifyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ===== ユーザー管理 =====
+  /users/register:
+    post:
+      tags: [users]
+      summary: ユーザー登録
+      description: 新しいユーザーアカウントを作成します
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: ユーザー登録成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /users/me:
+    get:
+      tags: [users]
+      summary: 現在のユーザー情報取得
+      description: 認証済みユーザーの詳細情報を取得します
+      responses:
+        '200':
+          description: ユーザー情報取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags: [users]
+      summary: ユーザー情報更新
+      description: 認証済みユーザーの情報を更新します
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: ユーザー情報更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{user_id}:
+    get:
+      tags: [users]
+      summary: 指定ユーザー情報取得
+      description: |
+        指定されたユーザーIDの公開情報を取得します。
+        管理者権限またはAPI キーが必要です。
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: ユーザー情報取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===== WebAuthn認証 =====
+  /webauthn/register/start:
+    post:
+      tags: [webauthn]
+      summary: WebAuthn登録開始
+      description: WebAuthn認証器登録のためのチャレンジを生成します
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnRegisterStartRequest'
+      responses:
+        '200':
+          description: 登録チャレンジ生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnRegisterStartResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webauthn/register/finish:
+    post:
+      tags: [webauthn]
+      summary: WebAuthn登録完了
+      description: 認証器からのレスポンスを検証し、認証器を登録します
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnRegisterFinishRequest'
+      responses:
+        '200':
+          description: 認証器登録成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnCredentialResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webauthn/authenticate/start:
+    post:
+      tags: [webauthn]
+      summary: WebAuthn認証開始
+      description: WebAuthn認証のためのチャレンジを生成します
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnAuthStartRequest'
+      responses:
+        '200':
+          description: 認証チャレンジ生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnAuthStartResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /webauthn/authenticate/finish:
+    post:
+      tags: [webauthn]
+      summary: WebAuthn認証完了
+      description: 認証器からのレスポンスを検証し、JWTトークンを発行します
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebAuthnAuthFinishRequest'
+      responses:
+        '200':
+          description: WebAuthn認証成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webauthn/credentials:
+    get:
+      tags: [webauthn]
+      summary: 登録済み認証器一覧取得
+      description: 現在のユーザーが登録している認証器の一覧を取得します
+      responses:
+        '200':
+          description: 認証器一覧取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnCredentialsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webauthn/credentials/{credential_id}:
+    put:
+      tags: [webauthn]
+      summary: 認証器情報更新
+      description: 認証器の名前やその他の情報を更新します
+      parameters:
+        - name: credential_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWebAuthnCredentialRequest'
+      responses:
+        '200':
+          description: 認証器情報更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebAuthnCredential'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [webauthn]
+      summary: 認証器削除
+      description: 指定された認証器を削除します
+      parameters:
+        - name: credential_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 認証器削除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===== ソーシャルログイン =====
+  /social/providers:
+    get:
+      tags: [social]
+      summary: 利用可能なソーシャルプロバイダー一覧
+      description: 設定されているソーシャルログインプロバイダーの一覧を取得します
+      security: []
+      responses:
+        '200':
+          description: プロバイダー一覧取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialProvidersResponse'
+
+  /social/{provider}/authorize:
+    get:
+      tags: [social]
+      summary: ソーシャルログイン認証URL生成
+      description: |
+        指定されたプロバイダーのOAuth2認証URLを生成します。
+        クライアントは返されたURLにリダイレクトしてユーザー認証を開始します。
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, github, discord]
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: CSRF保護のためのstate parameter
+        - name: redirect_uri
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+          description: 認証完了後のリダイレクト先URL
+      responses:
+        '200':
+          description: 認証URL生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialAuthorizeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /social/{provider}/callback:
+    post:
+      tags: [social]
+      summary: ソーシャルログインコールバック処理
+      description: |
+        OAuth2プロバイダーからのコールバックを処理し、ユーザー認証を完了します。
+        新規ユーザーの場合は自動的にアカウントが作成されます。
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, github, discord]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SocialCallbackRequest'
+      responses:
+        '200':
+          description: ソーシャルログイン成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/accounts:
+    get:
+      tags: [social]
+      summary: 連携済みソーシャルアカウント一覧
+      description: 現在のユーザーが連携しているソーシャルアカウントの一覧を取得します
+      responses:
+        '200':
+          description: 連携アカウント一覧取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SocialAccountsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /social/accounts/{provider}:
+    delete:
+      tags: [social]
+      summary: ソーシャルアカウント連携解除
+      description: 指定されたプロバイダーとの連携を解除します
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, github, discord]
+      responses:
+        '200':
+          description: 連携解除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===== トークン・APIキー管理 =====
+  /tokens:
+    get:
+      tags: [tokens]
+      summary: トークン一覧取得
+      description: 現在のユーザーが作成したAPIキーやアクティブなセッションの一覧を取得します
+      responses:
+        '200':
+          description: トークン一覧取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokensResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [tokens]
+      summary: APIキー作成
+      description: |
+        新しいAPIキーを作成します。APIキーは外部サービスがGlen ID Platformと連携する際に使用します。
+        作成されたAPIキーは一度だけ表示され、再表示はできません。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTokenRequest'
+      responses:
+        '201':
+          description: APIキー作成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tokens/{token_id}:
+    get:
+      tags: [tokens]
+      summary: トークン詳細取得
+      description: 指定されたトークンの詳細情報を取得します
+      parameters:
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: トークン詳細取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [tokens]
+      summary: トークン無効化
+      description: 指定されたトークンを無効化します
+      parameters:
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: トークン無効化成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===== 外部サービス統合 =====
+  /external/user-info:
+    get:
+      tags: [external]
+      summary: ユーザー情報取得（外部サービス向け）
+      description: |
+        外部サービスがAPIキーまたはJWTトークンを使用してユーザー情報を取得します。
+        スコープに応じて返される情報が制限されます。
+      parameters:
+        - name: fields
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 取得するフィールドをカンマ区切りで指定
+          example: "id,username,email"
+      responses:
+        '200':
+          description: ユーザー情報取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalUserInfoResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /external/validate-session:
+    post:
+      tags: [external]
+      summary: セッション検証（外部サービス向け）
+      description: |
+        外部サービスがユーザーのセッションが有効かどうかを検証します。
+        SSO連携において、ユーザーの認証状態を確認する際に使用します。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateSessionRequest'
+      responses:
+        '200':
+          description: セッション検証成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWTアクセストークンによる認証
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: APIキーによる認証
+
+  schemas:
+    # ===== 基本レスポンス =====
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "操作が正常に完了しました"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Bad Request"
+        message:
+          type: string
+          example: "リクエストに不正な値が含まれています"
+        details:
+          type: object
+          additionalProperties: true
+
+    # ===== 認証関連 =====
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          example: "securepassword123"
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWTアクセストークン
+        refresh_token:
+          type: string
+          description: リフレッシュトークン
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_in:
+          type: integer
+          description: アクセストークンの有効期限（秒）
+          example: 3600
+        user:
+          $ref: '#/components/schemas/User'
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: "Bearer"
+        expires_in:
+          type: integer
+          example: 3600
+
+    TokenVerifyResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          example: true
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    # ===== ユーザー関連 =====
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+
+    UserResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    PublicUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        current_password:
+          type: string
+          format: password
+        new_password:
+          type: string
+          format: password
+
+    # ===== WebAuthn関連 =====
+    WebAuthnRegisterStartRequest:
+      type: object
+      required: [user_id, username]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type: string
+
+    WebAuthnRegisterStartResponse:
+      type: object
+      properties:
+        challenge:
+          type: string
+          description: Base64エンコードされたチャレンジ
+        user_id:
+          type: string
+        timeout:
+          type: integer
+          example: 60000
+        rp:
+          type: object
+          properties:
+            name:
+              type: string
+            id:
+              type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            displayName:
+              type: string
+        pubKeyCredParams:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: "public-key"
+              alg:
+                type: integer
+                example: -7
+
+    WebAuthnRegisterFinishRequest:
+      type: object
+      required: [user_id, credential_name, credential]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        credential_name:
+          type: string
+        credential:
+          type: object
+          properties:
+            id:
+              type: string
+            rawId:
+              type: string
+            type:
+              type: string
+              example: "public-key"
+            response:
+              type: object
+              properties:
+                attestationObject:
+                  type: string
+                clientDataJSON:
+                  type: string
+
+    WebAuthnAuthStartRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        user_verification:
+          type: string
+          enum: [required, preferred, discouraged]
+          default: preferred
+
+    WebAuthnAuthStartResponse:
+      type: object
+      properties:
+        challenge:
+          type: string
+        timeout:
+          type: integer
+          example: 60000
+        rp_id:
+          type: string
+        user_verification:
+          type: string
+        allowCredentials:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: "public-key"
+              id:
+                type: string
+              transports:
+                type: array
+                items:
+                  type: string
+
+    WebAuthnAuthFinishRequest:
+      type: object
+      required: [username, credential]
+      properties:
+        username:
+          type: string
+        credential:
+          type: object
+          properties:
+            id:
+              type: string
+            rawId:
+              type: string
+            type:
+              type: string
+              example: "public-key"
+            response:
+              type: object
+              properties:
+                authenticatorData:
+                  type: string
+                clientDataJSON:
+                  type: string
+                signature:
+                  type: string
+                userHandle:
+                  type: string
+
+    WebAuthnCredential:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+        credential_id:
+          type: string
+        name:
+          type: string
+        transport:
+          type: array
+          items:
+            type: string
+        flags:
+          type: object
+          properties:
+            user_present:
+              type: boolean
+            user_verified:
+              type: boolean
+        sign_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+
+    WebAuthnCredentialResponse:
+      type: object
+      properties:
+        credential:
+          $ref: '#/components/schemas/WebAuthnCredential'
+        verified:
+          type: boolean
+
+    WebAuthnCredentialsResponse:
+      type: object
+      properties:
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebAuthnCredential'
+
+    UpdateWebAuthnCredentialRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+
+    # ===== ソーシャルログイン関連 =====
+    SocialProvidersResponse:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: "google"
+              display_name:
+                type: string
+                example: "Google"
+              enabled:
+                type: boolean
+                example: true
+
+    SocialAuthorizeResponse:
+      type: object
+      properties:
+        authorization_url:
+          type: string
+          format: uri
+          example: "https://accounts.google.com/oauth/authorize?..."
+        state:
+          type: string
+          description: CSRF保護用のstate parameter
+
+    SocialCallbackRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: OAuth2認証コード
+        state:
+          type: string
+          description: CSRF保護用のstate parameter
+
+    SocialAccount:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: "google"
+        provider_user_id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        avatar_url:
+          type: string
+          format: uri
+        connected_at:
+          type: string
+          format: date-time
+
+    SocialAccountsResponse:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SocialAccount'
+
+    # ===== トークン管理関連 =====
+    Token:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        token_type:
+          type: string
+          enum: [api_key, session]
+        scopes:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    TokensResponse:
+      type: object
+      properties:
+        tokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/Token'
+
+    CreateTokenRequest:
+      type: object
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          example: "My Application API Key"
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: [read, write, admin]
+          example: ["read", "write"]
+        expires_in:
+          type: integer
+          description: 有効期限（秒）。未指定の場合は無期限
+          example: 31536000
+
+    CreateTokenResponse:
+      type: object
+      properties:
+        token:
+          $ref: '#/components/schemas/Token'
+        api_key:
+          type: string
+          description: 生成されたAPIキー（一度だけ表示）
+          example: "glen_id_1234567890abcdef..."
+
+    TokenDetail:
+      allOf:
+        - $ref: '#/components/schemas/Token'
+        - type: object
+          properties:
+            usage_count:
+              type: integer
+              description: 使用回数
+            last_ip:
+              type: string
+              description: 最後に使用されたIPアドレス
+
+    # ===== 外部サービス連携関連 =====
+    ExternalUserInfoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        scopes:
+          type: array
+          items:
+            type: string
+
+    ValidateSessionRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: 検証するJWTトークン
+        required_scopes:
+          type: array
+          items:
+            type: string
+          description: 必要なスコープ
+
+    ValidateSessionResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            username:
+              type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: 不正なリクエスト
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Unauthorized:
+      description: 認証が必要
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Forbidden:
+      description: アクセス権限なし
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: リソースが見つからない
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    Conflict:
+      description: 競合エラー（重複など）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    TooManyRequests:
+      description: レート制限に達しました
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -25,13 +25,20 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
 		INSERT INTO users (id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
+	
+	var email interface{}
+	if user.Email == "" {
+		email = nil
+	} else {
+		email = user.Email
+	}
 	
 	_, err := r.db.ExecContext(ctx, query,
 		user.ID,
 		user.Username,
-		user.Email,
+		email,
 		user.PasswordHash,
 		user.EmailVerified,
 		user.Status,
@@ -42,7 +49,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	)
 	
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if strings.Contains(err.Error(), "duplicate key") {
 			return ErrUserExists
 		}
 		return err
@@ -55,7 +62,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 	query := `
 		SELECT id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id
 		FROM users
-		WHERE username = ?
+		WHERE username = $1
 	`
 	
 	user := &models.User{}
@@ -86,7 +93,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 	query := `
 		SELECT id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id
 		FROM users
-		WHERE email = ?
+		WHERE email = $1
 	`
 	
 	user := &models.User{}
@@ -117,7 +124,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 	query := `
 		SELECT id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id
 		FROM users
-		WHERE id = ?
+		WHERE id = $1
 	`
 	
 	user := &models.User{}
@@ -147,8 +154,8 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	query := `
 		UPDATE users
-		SET username = ?, email = ?, password_hash = ?, email_verified = ?, status = ?, updated_at = ?, organization_id = ?, parent_user_id = ?
-		WHERE id = ?
+		SET username = $1, email = $2, password_hash = $3, email_verified = $4, status = $5, updated_at = $6, organization_id = $7, parent_user_id = $8
+		WHERE id = $9
 	`
 	
 	result, err := r.db.ExecContext(ctx, query,
@@ -180,7 +187,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 }
 
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM users WHERE id = ?`
+	query := `DELETE FROM users WHERE id = $1`
 	
 	result, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {

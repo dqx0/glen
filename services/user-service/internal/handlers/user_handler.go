@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/dqx0/glen/user-service/internal/models"
@@ -91,6 +92,8 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(err, models.ErrInvalidUsername) || errors.Is(err, models.ErrInvalidEmail) || errors.Is(err, models.ErrInvalidPassword) {
 				h.writeErrorResponse(w, http.StatusBadRequest, err.Error())
 			} else {
+				// デバッグ用：実際のエラーをログに出力
+				fmt.Printf("Registration error: %v\n", err)
 				h.writeErrorResponse(w, http.StatusInternalServerError, "internal server error")
 			}
 		}

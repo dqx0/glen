@@ -1,0 +1,20 @@
+# Glen ID Platform Flask Integration Example
+# Python dependencies
+
+Flask==2.3.3
+requests==2.31.0
+PyJWT==2.8.0
+python-dotenv==1.0.0
+
+# Optional: For production deployment
+gunicorn==21.2.0
+python-decouple==3.8
+
+# Optional: For enhanced logging and monitoring
+structlog==23.1.0
+prometheus-client==0.17.1
+
+# Optional: For testing
+pytest==7.4.2
+pytest-flask==1.2.0
+requests-mock==1.11.0

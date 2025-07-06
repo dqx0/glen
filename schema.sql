@@ -1,5 +1,13 @@
 -- Glen ID基盤データベース設計（WebAuthn中心、メール任意）
 
+-- 将来の権限・階層対応テーブル
+CREATE TABLE organizations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    parent_id UUID REFERENCES organizations(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ユーザーテーブル（コア）
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -63,14 +71,7 @@ CREATE TABLE mfa_secrets (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 将来の権限・階層対応テーブル
-CREATE TABLE organizations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
-    parent_id UUID REFERENCES organizations(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
+-- 権限・ロール管理テーブル
 CREATE TABLE roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,

@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 // API Base URL - 環境変数から取得、デフォルトはlocalhost
+// Docker環境では api-gateway コンテナ名を使用
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 // Axiosインスタンスを作成

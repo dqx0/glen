@@ -196,27 +196,46 @@ quickstart:
 	@echo "  - Run E2E tests: make test-e2e"
 	@echo "  - View help: make help"
 
-# フルスタック起動
-fullstack:
-	@echo "🌟 Starting full Glen ID Platform stack..."
-	@$(MAKE) dev
-	@$(MAKE) dev-services
+# フルスタック起動（Docker Compose）
+fullstack-docker:
+	@echo "🌟 Starting full Glen ID Platform stack with Docker..."
+	@echo "📦 Installing frontend dependencies..."
+	@$(MAKE) frontend-install
+	@echo "🎨 Building frontend..."
+	@$(MAKE) frontend-build
+	@echo "🐳 Building and starting all services..."
+	docker-compose -f infrastructure/docker/docker-compose.fullstack.yml up --build -d
+	@echo ""
+	@echo "⏳ Waiting for all services to be ready..."
+	@sleep 30
 	@echo ""
 	@echo "✅ Full stack is running!"
 	@echo "📍 Access points:"
+	@echo "  - Frontend: http://localhost:3000"
 	@echo "  - API Gateway: http://localhost:8080"
 	@echo "  - User Service: http://localhost:8082"
 	@echo "  - Auth Service: http://localhost:8081"
 	@echo "  - Social Service: http://localhost:8083"
+	@echo "  - PostgreSQL: localhost:5432"
+	@echo "  - Redis: localhost:6379"
 	@echo ""
-	@echo "🛑 To stop: make dev-services-stop && make dev-stop"
+	@echo "🛑 To stop: make fullstack-docker-stop"
 
-# フルスタック停止
-fullstack-stop:
+# フルスタック停止（Docker Compose）
+fullstack-docker-stop:
 	@echo "🛑 Stopping full Glen ID Platform stack..."
-	@$(MAKE) dev-services-stop
-	@$(MAKE) dev-stop
+	docker-compose -f infrastructure/docker/docker-compose.fullstack.yml down
 	@echo "✅ Full stack stopped"
+
+# フルスタックログ表示
+fullstack-docker-logs:
+	@echo "📄 Showing full stack logs..."
+	docker-compose -f infrastructure/docker/docker-compose.fullstack.yml logs -f
+
+# フルスタック状態確認
+fullstack-docker-status:
+	@echo "📊 Full stack status:"
+	docker-compose -f infrastructure/docker/docker-compose.fullstack.yml ps
 
 # ヘルプ
 help:
@@ -287,3 +306,33 @@ lint:
 	cd services/auth-service && golangci-lint run
 	cd services/user-service && golangci-lint run
 	cd services/api-gateway && golangci-lint run
+
+# フロントエンド関連
+frontend-install:
+	@echo "📦 Installing frontend dependencies..."
+	cd frontend && npm install
+	@echo "✅ Frontend dependencies installed"
+
+frontend-build:
+	@echo "🎨 Building frontend..."
+	cd frontend && npm run build
+	@echo "✅ Frontend built"
+
+frontend-dev:
+	@echo "🎨 Starting frontend development server..."
+	cd frontend && npm run dev
+
+frontend-docker-build:
+	@echo "🐳 Building frontend Docker image..."
+	docker build -t glen/frontend:latest -f frontend/Dockerfile frontend
+	@echo "✅ Frontend Docker image built"
+
+# Docker関連
+docker-build:
+	@echo "🐳 Building Docker images..."
+	docker build -t glen/auth-service:latest -f services/auth-service/Dockerfile services/auth-service
+	docker build -t glen/user-service:latest -f services/user-service/Dockerfile services/user-service
+	docker build -t glen/social-service:latest -f services/social-service/Dockerfile services/social-service
+	docker build -t glen/api-gateway:latest -f services/api-gateway/Dockerfile services/api-gateway
+	@$(MAKE) frontend-docker-build
+	@echo "✅ All Docker images built"
