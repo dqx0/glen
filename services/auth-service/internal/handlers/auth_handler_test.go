@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/dqx0/glen/auth-service/internal/models"
+	"github.com/dqx0/glen/auth-service/internal/repository"
 	"github.com/dqx0/glen/auth-service/internal/service"
 )
 
@@ -280,7 +281,7 @@ func TestAuthHandler_RevokeToken(t *testing.T) {
 		}
 
 		mockService.On("RevokeToken", mock.Anything, "nonexistent-token", "user-123").
-			Return(service.ErrTokenNotFound)
+			Return(repository.ErrTokenNotFound)
 
 		reqBody, _ := json.Marshal(revokeReq)
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/revoke", bytes.NewBuffer(reqBody))

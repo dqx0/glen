@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  # テスト用PostgreSQLデータベース
+  test-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: glen_test
+      POSTGRES_USER: glen_test
+      POSTGRES_PASSWORD: glen_test_pass
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data
+      - ../../schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glen_test -d glen_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glen-test-network
+
+  # Auth Service
+  auth-service:
+    image: glen/auth-service:latest
+    environment:
+      - PORT=8080
+      - DB_HOST=test-postgres
+      - DB_PORT=5432
+      - DB_NAME=glen_test
+      - DB_USER=glen_test
+      - DB_PASSWORD=glen_test_pass
+      - JWT_SECRET=test-jwt-secret-key-for-e2e-testing-only
+      - JWT_EXPIRES_IN=900
+    ports:
+      - "8081:8080"
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glen-test-network
+
+  # User Service
+  user-service:
+    image: glen/user-service:latest
+    environment:
+      - PORT=8080
+      - DB_HOST=test-postgres
+      - DB_PORT=5432
+      - DB_NAME=glen_test
+      - DB_USER=glen_test
+      - DB_PASSWORD=glen_test_pass
+    ports:
+      - "8082:8080"
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glen-test-network
+
+  # Social Service
+  social-service:
+    image: glen/social-service:latest
+    environment:
+      - PORT=8080
+      - DB_HOST=test-postgres
+      - DB_PORT=5432
+      - DB_NAME=glen_test
+      - DB_USER=glen_test
+      - DB_PASSWORD=glen_test_pass
+      - GOOGLE_CLIENT_ID=test-google-client-id
+      - GOOGLE_CLIENT_SECRET=test-google-client-secret
+      - GITHUB_CLIENT_ID=test-github-client-id
+      - GITHUB_CLIENT_SECRET=test-github-client-secret
+      - DISCORD_CLIENT_ID=test-discord-client-id
+      - DISCORD_CLIENT_SECRET=test-discord-client-secret
+    ports:
+      - "8083:8080"
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glen-test-network
+
+  # API Gateway
+  api-gateway:
+    image: glen/api-gateway:latest
+    environment:
+      - PORT=8080
+      - USER_SERVICE_URL=http://user-service:8080
+      - AUTH_SERVICE_URL=http://auth-service:8080
+      - SOCIAL_SERVICE_URL=http://social-service:8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      social-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glen-test-network
+
+volumes:
+  test_postgres_data:
+
+networks:
+  glen-test-network:
+    driver: bridge

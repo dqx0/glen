@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/dqx0/glen/auth-service/internal/models"
+	"github.com/dqx0/glen/auth-service/internal/repository"
 	"github.com/dqx0/glen/auth-service/internal/service"
 )
 
@@ -227,7 +228,7 @@ func (h *AuthHandler) handleServiceError(w http.ResponseWriter, err error) {
 		 errors.Is(err, service.ErrTokenExpired):
 		h.writeError(w, http.StatusUnauthorized, err.Error())
 	
-	case errors.Is(err, service.ErrTokenNotFound):
+	case errors.Is(err, repository.ErrTokenNotFound):
 		h.writeError(w, http.StatusNotFound, err.Error())
 	
 	case errors.Is(err, service.ErrUnauthorized):

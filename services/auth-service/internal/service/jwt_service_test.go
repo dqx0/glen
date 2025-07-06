@@ -177,12 +177,12 @@ func TestJWTService_InvalidKeys(t *testing.T) {
 		{
 			name:       "nil private key",
 			privateKey: nil,
-			publicKey:  generateTestKeyPair(t),
+			publicKey:  func() interface{} { _, pub := generateTestKeyPair(t); return pub }(),
 			wantErr:    true,
 		},
 		{
 			name:       "nil public key", 
-			privateKey: generateTestKeyPair(t),
+			privateKey: func() interface{} { priv, _ := generateTestKeyPair(t); return priv }(),
 			publicKey:  nil,
 			wantErr:    true,
 		},

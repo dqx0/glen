@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dqx0/glen/auth-service/internal/models"
+	"github.com/dqx0/glen/auth-service/internal/repository"
 )
 
 var (
@@ -16,7 +17,6 @@ var (
 	ErrEmptyScopes         = errors.New("empty scopes")
 	ErrInvalidRefreshToken = errors.New("invalid refresh token")
 	ErrTokenExpired        = errors.New("token expired")
-	ErrTokenNotFound       = errors.New("token not found")
 	ErrUnauthorized        = errors.New("unauthorized")
 )
 
@@ -128,7 +128,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshTokenValue, usern
 	// データベースからトークンを取得
 	token, err := s.tokenRepo.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
-		if errors.Is(err, ErrTokenNotFound) {
+		if errors.Is(err, repository.ErrTokenNotFound) {
 			return nil, ErrInvalidRefreshToken
 		}
 		return nil, err

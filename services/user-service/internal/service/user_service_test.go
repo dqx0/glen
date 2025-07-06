@@ -119,7 +119,8 @@ func TestUserService_Register(t *testing.T) {
 			email:    "test@example.com",
 			password: "password123",
 			setupMock: func(m *MockUserRepository) {
-				// モックは呼ばれない
+				m.On("GetByUsername", mock.Anything, "").Return(nil, repository.ErrUserNotFound)
+				m.On("GetByEmail", mock.Anything, "test@example.com").Return(nil, repository.ErrUserNotFound)
 			},
 			wantErr:     true,
 			expectedErr: "invalid username",

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/dqx0/glen/auth-service/internal/models"
+	"github.com/dqx0/glen/auth-service/internal/repository"
 )
 
 // MockTokenRepository はTokenRepositoryのモック
@@ -150,15 +151,14 @@ func TestAuthService_Login(t *testing.T) {
 }
 
 func TestAuthService_RefreshToken(t *testing.T) {
-	mockTokenRepo := new(MockTokenRepository)
-	mockJWTService := new(MockJWTService)
-	
-	service := &AuthService{
-		tokenRepo:  mockTokenRepo,
-		jwtService: mockJWTService,
-	}
-
 	t.Run("successful token refresh", func(t *testing.T) {
+		mockTokenRepo := new(MockTokenRepository)
+		mockJWTService := new(MockJWTService)
+		
+		service := &AuthService{
+			tokenRepo:  mockTokenRepo,
+			jwtService: mockJWTService,
+		}
 		refreshTokenValue := "refresh-token-value"
 		userID := "user-123"
 		username := "testuser"
@@ -196,9 +196,17 @@ func TestAuthService_RefreshToken(t *testing.T) {
 	})
 
 	t.Run("token not found", func(t *testing.T) {
+		mockTokenRepo := new(MockTokenRepository)
+		mockJWTService := new(MockJWTService)
+		
+		service := &AuthService{
+			tokenRepo:  mockTokenRepo,
+			jwtService: mockJWTService,
+		}
+		
 		refreshTokenValue := "invalid-token"
 		
-		mockTokenRepo.On("GetByTokenHash", mock.Anything, mock.AnythingOfType("string")).Return(nil, ErrTokenNotFound)
+		mockTokenRepo.On("GetByTokenHash", mock.Anything, mock.AnythingOfType("string")).Return(nil, repository.ErrTokenNotFound)
 
 		response, err := service.RefreshToken(context.Background(), refreshTokenValue, "testuser")
 		
@@ -208,6 +216,14 @@ func TestAuthService_RefreshToken(t *testing.T) {
 	})
 
 	t.Run("expired token", func(t *testing.T) {
+		mockTokenRepo := new(MockTokenRepository)
+		mockJWTService := new(MockJWTService)
+		
+		service := &AuthService{
+			tokenRepo:  mockTokenRepo,
+			jwtService: mockJWTService,
+		}
+		
 		refreshTokenValue := "expired-token-value"
 		userID := "user-123"
 		
@@ -267,15 +283,14 @@ func TestAuthService_CreateAPIKey(t *testing.T) {
 }
 
 func TestAuthService_RevokeToken(t *testing.T) {
-	mockTokenRepo := new(MockTokenRepository)
-	mockJWTService := new(MockJWTService)
-	
-	service := &AuthService{
-		tokenRepo:  mockTokenRepo,
-		jwtService: mockJWTService,
-	}
-
 	t.Run("successful token revocation", func(t *testing.T) {
+		mockTokenRepo := new(MockTokenRepository)
+		mockJWTService := new(MockJWTService)
+		
+		service := &AuthService{
+			tokenRepo:  mockTokenRepo,
+			jwtService: mockJWTService,
+		}
 		tokenID := "token-123"
 		userID := "user-123"
 
@@ -295,18 +310,34 @@ func TestAuthService_RevokeToken(t *testing.T) {
 	})
 
 	t.Run("token not found", func(t *testing.T) {
+		mockTokenRepo := new(MockTokenRepository)
+		mockJWTService := new(MockJWTService)
+		
+		service := &AuthService{
+			tokenRepo:  mockTokenRepo,
+			jwtService: mockJWTService,
+		}
+		
 		tokenID := "nonexistent-token"
 		userID := "user-123"
 
-		mockTokenRepo.On("GetByID", mock.Anything, tokenID).Return(nil, ErrTokenNotFound)
+		mockTokenRepo.On("GetByID", mock.Anything, tokenID).Return(nil, repository.ErrTokenNotFound)
 
 		err := service.RevokeToken(context.Background(), tokenID, userID)
 		
 		assert.Error(t, err)
-		assert.Equal(t, ErrTokenNotFound, err)
+		assert.Equal(t, repository.ErrTokenNotFound, err)
 	})
 
 	t.Run("unauthorized - different user", func(t *testing.T) {
+		mockTokenRepo := new(MockTokenRepository)
+		mockJWTService := new(MockJWTService)
+		
+		service := &AuthService{
+			tokenRepo:  mockTokenRepo,
+			jwtService: mockJWTService,
+		}
+		
 		tokenID := "token-123"
 		userID := "user-123"
 		differentUserID := "user-456"

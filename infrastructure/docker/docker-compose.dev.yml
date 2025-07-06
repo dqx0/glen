@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 開発用PostgreSQLデータベース
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: glen_dev
+      POSTGRES_USER: glen_dev
+      POSTGRES_PASSWORD: glen_dev_pass
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glen_dev -d glen_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glen-network
+
+  # Redis (セッション管理用)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - glen-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  glen-network:
+    driver: bridge

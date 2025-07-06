@@ -1,4 +1,4 @@
-module github.com/dqx0/glen/api-gateway
+module github.com/dqx0/glen/tests/e2e
 
 go 1.24.4
 

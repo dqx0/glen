@@ -19,11 +19,8 @@ const (
 )
 
 var (
-	ErrInvalidUserID   = errors.New("invalid user ID")
-	ErrInvalidUsername = errors.New("invalid username")
-	ErrEmptyScopes     = errors.New("empty scopes")
-	ErrInvalidKeys     = errors.New("invalid keys")
-	ErrInvalidToken    = errors.New("invalid token")
+	ErrInvalidKeys  = errors.New("invalid keys")
+	ErrInvalidToken = errors.New("invalid token")
 )
 
 // Claims はJWTクレーム構造体

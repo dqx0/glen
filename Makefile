@@ -1,6 +1,6 @@
 # Glen ID Platform Makefile
 
-.PHONY: test test-unit test-integration build dev clean setup-deps
+.PHONY: test test-unit test-integration test-e2e test-e2e-up test-e2e-down test-e2e-logs build docker-build docker-build-parallel docker-clean docker-prune dev dev-stop dev-logs dev-status dev-restart dev-services dev-services-stop clean clean-all setup-deps quickstart fullstack fullstack-stop help
 
 # テスト関連
 test: test-unit test-integration
@@ -9,6 +9,7 @@ test-unit:
 	@echo "Running unit tests..."
 	cd services/auth-service && go test -v ./...
 	cd services/user-service && go test -v ./...
+	cd services/social-service && go test -v ./...
 	cd services/api-gateway && go test -v ./...
 	cd shared && go test -v ./...
 
@@ -16,6 +17,40 @@ test-integration:
 	@echo "Running integration tests..."
 	cd services/auth-service && go test -v -tags=integration ./...
 	cd services/user-service && go test -v -tags=integration ./...
+
+test-e2e:
+	@echo "🧪 Running E2E tests..."
+	@echo "🐳 Building test images..."
+	@$(MAKE) docker-build
+	@echo "🚀 Starting test environment..."
+	docker-compose -f infrastructure/docker/docker-compose.test.yml up -d
+	@echo "⏳ Waiting for services to be ready..."
+	@sleep 15
+	@echo "🧪 Running E2E test suite..."
+	cd tests/e2e && go test -v ./...
+	@echo "🛑 Stopping test environment..."
+	docker-compose -f infrastructure/docker/docker-compose.test.yml down
+	@echo "✅ E2E tests completed"
+
+test-e2e-up:
+	@echo "🚀 Starting E2E test environment (persistent)..."
+	@$(MAKE) docker-build
+	docker-compose -f infrastructure/docker/docker-compose.test.yml up -d
+	@echo "⏳ Waiting for services to be ready..."
+	@sleep 15
+	@echo "✅ E2E environment ready!"
+	@echo "📍 API Gateway: http://localhost:8080"
+	@echo "🧪 Run tests: cd tests/e2e && go test -v ./..."
+	@echo "🛑 Stop environment: make test-e2e-down"
+
+test-e2e-down:
+	@echo "🛑 Stopping E2E test environment..."
+	docker-compose -f infrastructure/docker/docker-compose.test.yml down
+	@echo "✅ E2E environment stopped"
+
+test-e2e-logs:
+	@echo "📄 Showing E2E test environment logs..."
+	docker-compose -f infrastructure/docker/docker-compose.test.yml logs -f
 
 test-coverage:
 	@echo "Running tests with coverage..."
@@ -25,16 +60,100 @@ test-coverage:
 
 # ビルド
 build:
+	@echo "🔨 Building Go binaries..."
+	@mkdir -p bin
 	cd services/auth-service && go build -o ../../bin/auth-service ./cmd/server
 	cd services/user-service && go build -o ../../bin/user-service ./cmd/server
+	cd services/social-service && go build -o ../../bin/social-service ./cmd/server
 	cd services/api-gateway && go build -o ../../bin/api-gateway ./cmd/server
+	@echo "✅ Build completed"
 
-# 開発環境
+# Docker関連
+docker-build:
+	@echo "🐳 Building Docker images..."
+	docker build -t glen/auth-service:latest -f services/auth-service/Dockerfile services/auth-service
+	docker build -t glen/user-service:latest -f services/user-service/Dockerfile services/user-service
+	docker build -t glen/social-service:latest -f services/social-service/Dockerfile services/social-service
+	docker build -t glen/api-gateway:latest -f services/api-gateway/Dockerfile services/api-gateway
+	@echo "✅ Docker images built"
+
+docker-build-parallel:
+	@echo "🐳 Building Docker images in parallel..."
+	@docker build -t glen/auth-service:latest -f services/auth-service/Dockerfile services/auth-service & \
+	docker build -t glen/user-service:latest -f services/user-service/Dockerfile services/user-service & \
+	docker build -t glen/social-service:latest -f services/social-service/Dockerfile services/social-service & \
+	docker build -t glen/api-gateway:latest -f services/api-gateway/Dockerfile services/api-gateway & \
+	wait
+	@echo "✅ Docker images built (parallel)"
+
+docker-clean:
+	@echo "🧹 Cleaning Docker images..."
+	docker rmi glen/auth-service:latest glen/user-service:latest glen/social-service:latest glen/api-gateway:latest 2>/dev/null || true
+	@echo "✅ Docker images cleaned"
+
+docker-prune:
+	@echo "🧹 Pruning Docker system..."
+	docker system prune -f
+	@echo "✅ Docker system pruned"
+
+# Docker環境管理
 dev:
+	@echo "🚀 Starting development environment..."
+	@echo "📊 Starting PostgreSQL and Redis..."
 	docker-compose -f infrastructure/docker/docker-compose.dev.yml up -d
+	@echo "⏳ Waiting for database to be ready..."
+	@sleep 5
+	@echo "✅ Development environment is ready!"
+	@echo ""
+	@echo "📍 Available services:"
+	@echo "   - PostgreSQL: localhost:5432 (glen_dev/glen_dev/glen_dev_pass)"
+	@echo "   - Redis: localhost:6379"
+	@echo ""
+	@echo "🔧 Next steps:"
+	@echo "   - Run services: make dev-services"
+	@echo "   - View logs: make dev-logs"
+	@echo "   - Stop all: make dev-stop"
 
 dev-stop:
+	@echo "🛑 Stopping development environment..."
 	docker-compose -f infrastructure/docker/docker-compose.dev.yml down
+	@echo "✅ Development environment stopped"
+
+dev-logs:
+	@echo "📄 Showing development environment logs..."
+	docker-compose -f infrastructure/docker/docker-compose.dev.yml logs -f
+
+dev-status:
+	@echo "📊 Development environment status:"
+	docker-compose -f infrastructure/docker/docker-compose.dev.yml ps
+
+dev-restart:
+	@echo "🔄 Restarting development environment..."
+	docker-compose -f infrastructure/docker/docker-compose.dev.yml restart
+	@echo "✅ Development environment restarted"
+
+# サービス起動（開発用）
+dev-services:
+	@echo "🚀 Starting all services in development mode..."
+	@echo "Starting user-service..."
+	cd services/user-service && PORT=8082 DB_HOST=localhost DB_NAME=glen_dev DB_USER=glen_dev DB_PASSWORD=glen_dev_pass go run ./cmd/server &
+	@echo "Starting auth-service..."
+	cd services/auth-service && PORT=8081 DB_HOST=localhost DB_NAME=glen_dev DB_USER=glen_dev DB_PASSWORD=glen_dev_pass go run ./cmd/server &
+	@echo "Starting social-service..."
+	cd services/social-service && PORT=8083 DB_HOST=localhost DB_NAME=glen_dev DB_USER=glen_dev DB_PASSWORD=glen_dev_pass go run ./cmd/server &
+	@echo "Starting api-gateway..."
+	cd services/api-gateway && PORT=8080 USER_SERVICE_URL=http://localhost:8082 AUTH_SERVICE_URL=http://localhost:8081 SOCIAL_SERVICE_URL=http://localhost:8083 go run ./cmd/server &
+	@echo ""
+	@echo "✅ All services started!"
+	@echo "📍 API Gateway: http://localhost:8080"
+	@echo "📍 User Service: http://localhost:8082"
+	@echo "📍 Auth Service: http://localhost:8081"
+	@echo "📍 Social Service: http://localhost:8083"
+
+dev-services-stop:
+	@echo "🛑 Stopping all Go services..."
+	@pkill -f "go run.*glen.*server" || true
+	@echo "✅ All services stopped"
 
 # 依存関係インストール
 setup-deps:
@@ -45,10 +164,109 @@ setup-deps:
 
 # クリーンアップ
 clean:
+	@echo "🧹 Cleaning build artifacts..."
 	rm -rf bin/
 	cd services/auth-service && go clean
 	cd services/user-service && go clean
+	cd services/social-service && go clean
 	cd services/api-gateway && go clean
+	@echo "✅ Clean completed"
+
+clean-all: clean docker-clean
+	@echo "🧹 Full cleanup completed"
+
+# クイックスタート
+quickstart:
+	@echo "🚀 Glen ID Platform - Quick Start"
+	@echo ""
+	@echo "1️⃣ Starting development environment..."
+	@$(MAKE) dev
+	@echo ""
+	@echo "2️⃣ Setting up dependencies..."
+	@$(MAKE) setup-deps
+	@echo ""
+	@echo "3️⃣ Building Docker images..."
+	@$(MAKE) docker-build
+	@echo ""
+	@echo "✅ Quick start completed!"
+	@echo ""
+	@echo "📋 Next steps:"
+	@echo "  - Start services: make dev-services"
+	@echo "  - Run tests: make test-unit"
+	@echo "  - Run E2E tests: make test-e2e"
+	@echo "  - View help: make help"
+
+# フルスタック起動
+fullstack:
+	@echo "🌟 Starting full Glen ID Platform stack..."
+	@$(MAKE) dev
+	@$(MAKE) dev-services
+	@echo ""
+	@echo "✅ Full stack is running!"
+	@echo "📍 Access points:"
+	@echo "  - API Gateway: http://localhost:8080"
+	@echo "  - User Service: http://localhost:8082"
+	@echo "  - Auth Service: http://localhost:8081"
+	@echo "  - Social Service: http://localhost:8083"
+	@echo ""
+	@echo "🛑 To stop: make dev-services-stop && make dev-stop"
+
+# フルスタック停止
+fullstack-stop:
+	@echo "🛑 Stopping full Glen ID Platform stack..."
+	@$(MAKE) dev-services-stop
+	@$(MAKE) dev-stop
+	@echo "✅ Full stack stopped"
+
+# ヘルプ
+help:
+	@echo "🚀 Glen ID Platform - Available Commands"
+	@echo ""
+	@echo "⚡ Quick Start:"
+	@echo "  make quickstart         - Initial setup (recommended)"
+	@echo "  make fullstack          - Start full stack"
+	@echo "  make fullstack-stop     - Stop full stack"
+	@echo ""
+	@echo "📋 Testing:"
+	@echo "  make test-unit          - Run all unit tests"
+	@echo "  make test-e2e           - Run E2E tests (full cycle)"
+	@echo "  make test-e2e-up        - Start E2E environment (persistent)"
+	@echo "  make test-e2e-down      - Stop E2E environment"
+	@echo "  make test-e2e-logs      - Show E2E environment logs"
+	@echo "  make test-coverage      - Run tests with coverage"
+	@echo ""
+	@echo "🔨 Building:"
+	@echo "  make build              - Build Go binaries"
+	@echo "  make docker-build       - Build Docker images"
+	@echo "  make docker-build-parallel - Build Docker images (parallel)"
+	@echo ""
+	@echo "🐳 Development Environment:"
+	@echo "  make dev                - Start PostgreSQL + Redis"
+	@echo "  make dev-services       - Start all Go services"
+	@echo "  make dev-stop           - Stop Docker environment"
+	@echo "  make dev-services-stop  - Stop Go services"
+	@echo "  make dev-logs           - Show development logs"
+	@echo "  make dev-status         - Show environment status"
+	@echo "  make dev-restart        - Restart environment"
+	@echo ""
+	@echo "🧹 Cleanup:"
+	@echo "  make clean              - Clean build artifacts"
+	@echo "  make docker-clean       - Clean Docker images"
+	@echo "  make docker-prune       - Prune Docker system"
+	@echo "  make clean-all          - Full cleanup"
+	@echo ""
+	@echo "🗄️ Database:"
+	@echo "  make db-migrate         - Run database migrations"
+	@echo "  make db-rollback        - Rollback last migration"
+	@echo ""
+	@echo "☸️ Kubernetes:"
+	@echo "  make k8s-deploy         - Deploy to Kubernetes"
+	@echo "  make k8s-delete         - Delete from Kubernetes"
+	@echo ""
+	@echo "🔍 Other:"
+	@echo "  make lint               - Run linters"
+	@echo "  make setup-deps         - Download dependencies"
+	@echo "  make help               - Show this help"
 
 # データベース関連
 db-migrate:

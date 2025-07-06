@@ -42,7 +42,7 @@ func TestOAuth2Service_GetAuthURL(t *testing.T) {
 			
 			assert.Contains(t, authURL, config.AuthURL)
 			assert.Contains(t, authURL, "client_id="+config.ClientID)
-			assert.Contains(t, authURL, "redirect_uri="+config.RedirectURL)
+			assert.Contains(t, authURL, "redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback")
 			assert.Contains(t, authURL, "state="+tt.state)
 			assert.Contains(t, authURL, "response_type=code")
 			assert.Contains(t, authURL, "scope=openid+email+profile")
@@ -138,6 +138,7 @@ func TestOAuth2Service_GetUserInfo(t *testing.T) {
 	defer mockServer.Close()
 	
 	config := &models.OAuth2Config{
+		ClientID:    "test-client-id",
 		UserInfoURL: mockServer.URL + "/userinfo",
 	}
 	

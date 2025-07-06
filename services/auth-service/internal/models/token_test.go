@@ -10,44 +10,44 @@ import (
 
 func TestToken_NewRefreshToken(t *testing.T) {
 	tests := []struct {
-		name     string
-		userID   string
-		name     string
-		scopes   []string
-		wantErr  bool
+		name      string
+		userID    string
+		tokenName string
+		scopes    []string
+		wantErr   bool
 	}{
 		{
 			name:    "valid refresh token",
 			userID:  "user-123",
-			name:    "login-session",
+			tokenName: "login-session",
 			scopes:  []string{"user:read", "user:write"},
 			wantErr: false,
 		},
 		{
 			name:    "valid refresh token with minimal scopes",
 			userID:  "user-456",
-			name:    "mobile-app",
+			tokenName: "mobile-app",
 			scopes:  []string{"user:read"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid - empty user ID",
 			userID:  "",
-			name:    "session",
+			tokenName: "session",
 			scopes:  []string{"user:read"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid - empty name",
 			userID:  "user-123",
-			name:    "",
+			tokenName: "",
 			scopes:  []string{"user:read"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid - empty scopes",
 			userID:  "user-123",
-			name:    "session",
+			tokenName: "session",
 			scopes:  []string{},
 			wantErr: true,
 		},
@@ -55,7 +55,7 @@ func TestToken_NewRefreshToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token, err := NewRefreshToken(tt.userID, tt.name, tt.scopes)
+			token, err := NewRefreshToken(tt.userID, tt.tokenName, tt.scopes)
 			
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -65,7 +65,7 @@ func TestToken_NewRefreshToken(t *testing.T) {
 				require.NotNil(t, token)
 				
 				assert.Equal(t, tt.userID, token.UserID)
-				assert.Equal(t, tt.name, token.Name)
+				assert.Equal(t, tt.tokenName, token.Name)
 				assert.Equal(t, tt.scopes, token.Scopes)
 				assert.Equal(t, TokenTypeRefresh, token.Type)
 				assert.NotEmpty(t, token.ID)
@@ -84,38 +84,38 @@ func TestToken_NewRefreshToken(t *testing.T) {
 
 func TestToken_NewAPIKey(t *testing.T) {
 	tests := []struct {
-		name     string
-		userID   string
-		name     string
-		scopes   []string
-		wantErr  bool
+		name      string
+		userID    string
+		tokenName string
+		scopes    []string
+		wantErr   bool
 	}{
 		{
-			name:    "valid API key",
-			userID:  "user-123",
-			name:    "production-api",
-			scopes:  []string{"api:read", "api:write"},
-			wantErr: false,
+			name:      "valid API key",
+			userID:    "user-123",
+			tokenName: "production-api",
+			scopes:    []string{"api:read", "api:write"},
+			wantErr:   false,
 		},
 		{
-			name:    "valid read-only API key",
-			userID:  "user-456",
-			name:    "monitoring",
-			scopes:  []string{"api:read"},
-			wantErr: false,
+			name:      "valid read-only API key",
+			userID:    "user-456",
+			tokenName: "monitoring",
+			scopes:    []string{"api:read"},
+			wantErr:   false,
 		},
 		{
-			name:    "invalid - empty user ID",
-			userID:  "",
-			name:    "api-key",
-			scopes:  []string{"api:read"},
-			wantErr: true,
+			name:      "invalid - empty user ID",
+			userID:    "",
+			tokenName: "api-key",
+			scopes:    []string{"api:read"},
+			wantErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			token, err := NewAPIKey(tt.userID, tt.name, tt.scopes)
+			token, err := NewAPIKey(tt.userID, tt.tokenName, tt.scopes)
 			
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -125,7 +125,7 @@ func TestToken_NewAPIKey(t *testing.T) {
 				require.NotNil(t, token)
 				
 				assert.Equal(t, tt.userID, token.UserID)
-				assert.Equal(t, tt.name, token.Name)
+				assert.Equal(t, tt.tokenName, token.Name)
 				assert.Equal(t, tt.scopes, token.Scopes)
 				assert.Equal(t, TokenTypeAPIKey, token.Type)
 				assert.NotEmpty(t, token.ID)
