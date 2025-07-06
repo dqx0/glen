@@ -46,6 +46,12 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/login", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
 	mux.HandleFunc("/api/v1/auth/refresh", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
 
+	// WebAuthn関連（認証不要 - 登録・認証フロー）
+	mux.HandleFunc("/api/v1/webauthn/register/start", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+	mux.HandleFunc("/api/v1/webauthn/register/finish", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+	mux.HandleFunc("/api/v1/webauthn/login/start", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+	mux.HandleFunc("/api/v1/webauthn/login/finish", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+
 	// ソーシャルログイン（認証不要 - OAuth2フロー）
 	mux.HandleFunc("/api/v1/social/authorize", corsMiddleware.Handle(gatewayHandler.ProxyToSocialService))
 	mux.HandleFunc("/api/v1/social/callback", corsMiddleware.Handle(gatewayHandler.ProxyToSocialService))
