@@ -66,8 +66,5 @@ secrets/
 test_output/
 
 # Development documentation (internal use)
-DEVELOPMENT_STATE.md
-TODO_CHECKLIST.md
-ARCHITECTURE_NOTES.md
-QUICK_START_GUIDE.md
-CLAUDE.md
+*.md
+!README.md
