@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/dqx0/glen/auth-service/internal/models"
@@ -235,7 +237,10 @@ func (h *AuthHandler) handleServiceError(w http.ResponseWriter, err error) {
 		h.writeError(w, http.StatusForbidden, err.Error())
 	
 	default:
-		h.writeError(w, http.StatusInternalServerError, "internal server error")
+		// デバッグ用のエラーログ出力
+		log.Printf("Auth handler error: %v", err)
+		// 開発環境では詳細なエラーを返す
+		h.writeError(w, http.StatusInternalServerError, fmt.Sprintf("internal server error: %v", err))
 	}
 }
 

@@ -26,7 +26,6 @@ func main() {
 	gatewayHandler := handlers.NewGatewayHandler(serviceProxy)
 
 	// ミドルウェアの設定
-	corsMiddleware := middleware.NewCORSMiddleware()
 	authMiddleware := middleware.NewAuthMiddleware(config.AuthService)
 
 	// ルーターの設定
@@ -39,30 +38,49 @@ func main() {
 	})
 
 	// ユーザー関連（認証不要 - 登録・ログイン）
-	mux.HandleFunc("/api/v1/users/register", corsMiddleware.Handle(gatewayHandler.ProxyToUserService))
-	mux.HandleFunc("/api/v1/users/login", corsMiddleware.Handle(gatewayHandler.ProxyToUserService))
+	mux.HandleFunc("/api/v1/users/register", gatewayHandler.ProxyToUserService)
+	mux.HandleFunc("/api/v1/users/login", gatewayHandler.ProxyToUserService)
 
 	// 認証関連（認証不要 - トークン発行・リフレッシュ）
-	mux.HandleFunc("/api/v1/auth/login", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
-	mux.HandleFunc("/api/v1/auth/refresh", corsMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+	mux.HandleFunc("/api/v1/auth/login", gatewayHandler.ProxyToAuthService)
+	mux.HandleFunc("/api/v1/auth/refresh", gatewayHandler.ProxyToAuthService)
 
 	// ソーシャルログイン（認証不要 - OAuth2フロー）
-	mux.HandleFunc("/api/v1/social/authorize", corsMiddleware.Handle(gatewayHandler.ProxyToSocialService))
-	mux.HandleFunc("/api/v1/social/callback", corsMiddleware.Handle(gatewayHandler.ProxyToSocialService))
-	mux.HandleFunc("/api/v1/social/providers", corsMiddleware.Handle(gatewayHandler.ProxyToSocialService))
+	mux.HandleFunc("/api/v1/social/authorize", gatewayHandler.ProxyToSocialService)
+	mux.HandleFunc("/api/v1/social/callback", gatewayHandler.ProxyToSocialService)
+	mux.HandleFunc("/api/v1/social/providers", gatewayHandler.ProxyToSocialService)
 
 	// 認証が必要なエンドポイント
 	// ユーザー情報取得
-	mux.HandleFunc("/api/v1/users", corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToUserService)))
+	mux.HandleFunc("/api/v1/users", authMiddleware.Handle(gatewayHandler.ProxyToUserService))
 
 	// トークン管理
-	mux.HandleFunc("/api/v1/auth/api-keys", corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
-	mux.HandleFunc("/api/v1/auth/tokens", corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
-	mux.HandleFunc("/api/v1/auth/revoke", corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
-	mux.HandleFunc("/api/v1/auth/validate-api-key", corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
+	mux.HandleFunc("/api/v1/auth/api-keys", authMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+	mux.HandleFunc("/api/v1/auth/tokens", authMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+	mux.HandleFunc("/api/v1/auth/revoke", authMiddleware.Handle(gatewayHandler.ProxyToAuthService))
+	mux.HandleFunc("/api/v1/auth/validate-api-key", authMiddleware.Handle(gatewayHandler.ProxyToAuthService))
 
 	// ソーシャルアカウント管理
-	mux.HandleFunc("/api/v1/social/accounts", corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToSocialService)))
+	mux.HandleFunc("/api/v1/social/accounts", authMiddleware.Handle(gatewayHandler.ProxyToSocialService))
+
+	// 全てのパスにワイルドカードハンドラーを追加してCORSを処理
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// 全てのリクエストにCORSヘッダーを設定
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+
+		// OPTIONSリクエストの場合はここで終了
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// その他のリクエストは404を返す（具体的なルートがない場合）
+		http.NotFound(w, r)
+	})
 
 	// サーバー起動
 	port := os.Getenv("PORT")
@@ -90,8 +108,8 @@ type Config struct {
 
 func loadConfig() *Config {
 	return &Config{
-		UserService:   getEnvOrDefault("USER_SERVICE_URL", "http://localhost:8081"),
-		AuthService:   getEnvOrDefault("AUTH_SERVICE_URL", "http://localhost:8082"),
+		UserService:   getEnvOrDefault("USER_SERVICE_URL", "http://localhost:8082"),
+		AuthService:   getEnvOrDefault("AUTH_SERVICE_URL", "http://localhost:8081"),
 		SocialService: getEnvOrDefault("SOCIAL_SERVICE_URL", "http://localhost:8083"),
 	}
 }

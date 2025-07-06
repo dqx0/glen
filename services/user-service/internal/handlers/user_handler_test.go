@@ -87,7 +87,7 @@ func TestUserHandler_Register(t *testing.T) {
 				"user": map[string]interface{}{
 					"username": "testuser",
 					"email":    "test@example.com",
-					"status":   "active",
+					"is_active": true,
 				},
 			},
 		},
@@ -106,7 +106,7 @@ func TestUserHandler_Register(t *testing.T) {
 				"user": map[string]interface{}{
 					"username": "testuser",
 					"email":    "",
-					"status":   "active",
+					"is_active": true,
 				},
 			},
 		},
@@ -193,7 +193,7 @@ func TestUserHandler_Register(t *testing.T) {
 				expectedUser := tt.expectedBody["user"].(map[string]interface{})
 				assert.Equal(t, expectedUser["username"], userResponse["username"])
 				assert.Equal(t, expectedUser["email"], userResponse["email"])
-				assert.Equal(t, expectedUser["status"], userResponse["status"])
+				assert.Equal(t, expectedUser["is_active"], userResponse["is_active"])
 			}
 			
 			mockService.AssertExpectations(t)
@@ -226,7 +226,7 @@ func TestUserHandler_Login(t *testing.T) {
 				"user": map[string]interface{}{
 					"username": "testuser",
 					"email":    "test@example.com",
-					"status":   "active",
+					"is_active": true,
 				},
 			},
 		},

@@ -79,15 +79,15 @@ func connectDB() (*sql.DB, error) {
 		}
 		user := os.Getenv("DB_USER")
 		if user == "" {
-			user = "glen_user"
+			user = "glen_dev"
 		}
 		password := os.Getenv("DB_PASSWORD")
 		if password == "" {
-			password = "glen_password"
+			password = "glen_dev_pass"
 		}
 		dbname := os.Getenv("DB_NAME")
 		if dbname == "" {
-			dbname = "glen_auth"
+			dbname = "glen_dev"
 		}
 
 		dbURL = "postgres://" + user + ":" + password + "@" + host + ":" + port + "/" + dbname + "?sslmode=disable"

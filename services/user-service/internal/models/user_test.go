@@ -72,7 +72,7 @@ func TestUser_Create(t *testing.T) {
 				
 				assert.Equal(t, tt.username, user.Username)
 				assert.Equal(t, tt.email, user.Email)
-				assert.Equal(t, "active", user.Status)
+				assert.True(t, user.IsActive)
 				assert.NotEmpty(t, user.ID)
 				assert.False(t, user.CreatedAt.IsZero())
 				assert.False(t, user.UpdatedAt.IsZero())
@@ -149,8 +149,8 @@ func TestUser_IsActive(t *testing.T) {
 	user, err := NewUser("testuser", "test@example.com", "password123")
 	require.NoError(t, err)
 	
-	assert.True(t, user.IsActive())
+	assert.True(t, user.IsActive)
 	
-	user.Status = "inactive"
-	assert.False(t, user.IsActive())
+	user.IsActive = false
+	assert.False(t, user.IsActive)
 }

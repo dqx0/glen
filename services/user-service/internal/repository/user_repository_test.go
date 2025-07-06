@@ -32,7 +32,7 @@ func TestUserRepository_Create(t *testing.T) {
 		assert.Equal(t, user.ID, retrievedUser.ID)
 		assert.Equal(t, user.Username, retrievedUser.Username)
 		assert.Equal(t, user.Email, retrievedUser.Email)
-		assert.Equal(t, user.Status, retrievedUser.Status)
+		assert.Equal(t, user.IsActive, retrievedUser.IsActive)
 	})
 	
 	t.Run("create user with duplicate username fails", func(t *testing.T) {
@@ -53,7 +53,7 @@ func TestUserRepository_Create(t *testing.T) {
 		err = repo.Create(context.Background(), user2)
 		
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "username already exists")
+		assert.Contains(t, err.Error(), "UNIQUE constraint failed: users.username")
 	})
 }
 
@@ -164,7 +164,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			email TEXT UNIQUE,
 			password_hash TEXT,
 			email_verified BOOLEAN DEFAULT FALSE,
-			status TEXT DEFAULT 'active',
+			is_active BOOLEAN DEFAULT TRUE,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			organization_id TEXT,

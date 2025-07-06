@@ -249,18 +249,31 @@ func setupTestDB(t *testing.T) *sql.DB {
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	
-	// api_tokensテーブル作成
+	// refresh_tokensテーブル作成
 	_, err = db.Exec(`
-		CREATE TABLE api_tokens (
+		CREATE TABLE refresh_tokens (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL,
-			token_type TEXT NOT NULL,
 			token_hash TEXT NOT NULL,
-			name TEXT,
-			scopes TEXT, -- JSON文字列として保存
-			expires_at DATETIME,
-			last_used_at DATETIME,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			name TEXT NOT NULL,
+			scopes TEXT,
+			expires_at DATETIME NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_used_at DATETIME
+		)
+	`)
+	require.NoError(t, err)
+	
+	// api_keysテーブル作成
+	_, err = db.Exec(`
+		CREATE TABLE api_keys (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			key_hash TEXT NOT NULL,
+			name TEXT NOT NULL,
+			scopes TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_used_at DATETIME
 		)
 	`)
 	require.NoError(t, err)

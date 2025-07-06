@@ -24,8 +24,8 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO users (id, username, email, password_hash, email_verified, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`
 	
 	var email interface{}
@@ -41,11 +41,9 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 		email,
 		user.PasswordHash,
 		user.EmailVerified,
-		user.Status,
+		user.IsActive, // status -> is_active
 		user.CreatedAt,
 		user.UpdatedAt,
-		user.OrganizationID,
-		user.ParentUserID,
 	)
 	
 	if err != nil {
@@ -60,7 +58,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*models.User, error) {
 	query := `
-		SELECT id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id
+		SELECT id, username, email, password_hash, email_verified, is_active, created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -72,11 +70,9 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 		&user.Email,
 		&user.PasswordHash,
 		&user.EmailVerified,
-		&user.Status,
+		&user.IsActive,
 		&user.CreatedAt,
 		&user.UpdatedAt,
-		&user.OrganizationID,
-		&user.ParentUserID,
 	)
 	
 	if err != nil {
@@ -91,7 +87,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*m
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	query := `
-		SELECT id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id
+		SELECT id, username, email, password_hash, email_verified, is_active, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -103,11 +99,9 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 		&user.Email,
 		&user.PasswordHash,
 		&user.EmailVerified,
-		&user.Status,
+		&user.IsActive,
 		&user.CreatedAt,
 		&user.UpdatedAt,
-		&user.OrganizationID,
-		&user.ParentUserID,
 	)
 	
 	if err != nil {
@@ -122,7 +116,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 
 func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, error) {
 	query := `
-		SELECT id, username, email, password_hash, email_verified, status, created_at, updated_at, organization_id, parent_user_id
+		SELECT id, username, email, password_hash, email_verified, is_active, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -134,11 +128,9 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 		&user.Email,
 		&user.PasswordHash,
 		&user.EmailVerified,
-		&user.Status,
+		&user.IsActive,
 		&user.CreatedAt,
 		&user.UpdatedAt,
-		&user.OrganizationID,
-		&user.ParentUserID,
 	)
 	
 	if err != nil {
@@ -154,8 +146,8 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	query := `
 		UPDATE users
-		SET username = $1, email = $2, password_hash = $3, email_verified = $4, status = $5, updated_at = $6, organization_id = $7, parent_user_id = $8
-		WHERE id = $9
+		SET username = $1, email = $2, password_hash = $3, email_verified = $4, is_active = $5, updated_at = $6
+		WHERE id = $7
 	`
 	
 	result, err := r.db.ExecContext(ctx, query,
@@ -163,10 +155,8 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 		user.Email,
 		user.PasswordHash,
 		user.EmailVerified,
-		user.Status,
+		user.IsActive,
 		user.UpdatedAt,
-		user.OrganizationID,
-		user.ParentUserID,
 		user.ID,
 	)
 	

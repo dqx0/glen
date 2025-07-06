@@ -50,7 +50,7 @@ type UserResponse struct {
 	Username      string `json:"username"`
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
-	Status        string `json:"status"`
+	IsActive      bool   `json:"is_active"`
 	CreatedAt     string `json:"created_at"`
 }
 
@@ -106,7 +106,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Username:      user.Username,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
-		Status:        user.Status,
+		IsActive:      user.IsActive,
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
@@ -152,7 +152,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Username:      user.Username,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
-		Status:        user.Status,
+		IsActive:      user.IsActive,
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
@@ -189,7 +189,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		Username:      user.Username,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
-		Status:        user.Status,
+		IsActive:      user.IsActive,
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 

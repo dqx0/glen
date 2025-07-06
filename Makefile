@@ -1,6 +1,6 @@
 # Glen ID Platform Makefile
 
-.PHONY: test test-unit test-integration test-e2e test-e2e-up test-e2e-down test-e2e-logs build docker-build docker-build-parallel docker-clean docker-prune dev dev-stop dev-logs dev-status dev-restart dev-services dev-services-stop clean clean-all setup-deps quickstart fullstack fullstack-stop help
+.PHONY: test test-unit test-integration test-e2e test-e2e-up test-e2e-down test-e2e-logs build docker-build docker-build-parallel docker-clean docker-prune dev dev-stop dev-logs dev-status dev-restart dev-services dev-services-stop clean clean-all setup-deps quickstart fullstack fullstack-stop migrator-build migrate-up migrate-down migrate-status migrate-create seed-all seed seed-create db-clear db-reset db-setup help
 
 # テスト関連
 test: test-unit test-integration
@@ -68,14 +68,6 @@ build:
 	cd services/api-gateway && go build -o ../../bin/api-gateway ./cmd/server
 	@echo "✅ Build completed"
 
-# Docker関連
-docker-build:
-	@echo "🐳 Building Docker images..."
-	docker build -t glen/auth-service:latest -f services/auth-service/Dockerfile services/auth-service
-	docker build -t glen/user-service:latest -f services/user-service/Dockerfile services/user-service
-	docker build -t glen/social-service:latest -f services/social-service/Dockerfile services/social-service
-	docker build -t glen/api-gateway:latest -f services/api-gateway/Dockerfile services/api-gateway
-	@echo "✅ Docker images built"
 
 docker-build-parallel:
 	@echo "🐳 Building Docker images in parallel..."
@@ -327,7 +319,7 @@ frontend-docker-build:
 	docker build -t glen/frontend:latest -f frontend/Dockerfile frontend
 	@echo "✅ Frontend Docker image built"
 
-# Docker関連
+# Docker関連 (統合版)
 docker-build:
 	@echo "🐳 Building Docker images..."
 	docker build -t glen/auth-service:latest -f services/auth-service/Dockerfile services/auth-service
@@ -336,3 +328,50 @@ docker-build:
 	docker build -t glen/api-gateway:latest -f services/api-gateway/Dockerfile services/api-gateway
 	@$(MAKE) frontend-docker-build
 	@echo "✅ All Docker images built"
+
+# マイグレーション関連
+migrator-build:
+	@echo "🔧 Building migrator..."
+	cd tools/migrator && go build -o ../../bin/migrator ./cmd
+	@echo "✅ Migrator built"
+
+migrate-up: migrator-build
+	@echo "⬆️ Running database migrations..."
+	./bin/migrator -cmd=up -migrations-dir=tools/migrator/migrations
+
+migrate-down: migrator-build
+	@echo "⬇️ Rolling back last migration..."
+	./bin/migrator -cmd=down -migrations-dir=tools/migrator/migrations
+
+migrate-status: migrator-build
+	@echo "📊 Checking migration status..."
+	./bin/migrator -cmd=status -migrations-dir=tools/migrator/migrations
+
+migrate-create: migrator-build
+	@echo "📝 Creating new migration..."
+	@if [ -z "$(NAME)" ]; then echo "Usage: make migrate-create NAME=migration_name"; exit 1; fi
+	./bin/migrator -cmd=create -name=$(NAME) -migrations-dir=tools/migrator/migrations
+
+seed-all: migrator-build
+	@echo "🌱 Running all seed files..."
+	./bin/migrator -cmd=seed-all -seeds-dir=tools/migrator/seeds
+
+seed: migrator-build
+	@echo "🌱 Running specific seed..."
+	@if [ -z "$(NAME)" ]; then echo "Usage: make seed NAME=seed_name"; exit 1; fi
+	./bin/migrator -cmd=seed -name=$(NAME) -seeds-dir=tools/migrator/seeds
+
+seed-create: migrator-build
+	@echo "📝 Creating new seed file..."
+	@if [ -z "$(NAME)" ]; then echo "Usage: make seed-create NAME=seed_name"; exit 1; fi
+	./bin/migrator -cmd=create-seed -name=$(NAME) -seeds-dir=tools/migrator/seeds
+
+db-clear: migrator-build
+	@echo "🧹 Clearing all database data..."
+	./bin/migrator -cmd=clear
+
+db-reset: db-clear migrate-up seed-all
+	@echo "🔄 Database reset complete"
+
+db-setup: migrate-up seed-all
+	@echo "📊 Database setup complete"

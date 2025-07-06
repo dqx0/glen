@@ -147,7 +147,7 @@ func TestUserService_Register(t *testing.T) {
 				require.NotNil(t, user)
 				assert.Equal(t, tt.username, user.Username)
 				assert.Equal(t, tt.email, user.Email)
-				assert.True(t, user.IsActive())
+				assert.True(t, user.IsActive)
 			}
 			
 			mockRepo.AssertExpectations(t)

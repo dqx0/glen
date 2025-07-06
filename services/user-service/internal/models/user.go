@@ -10,10 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
-	StatusActive   = "active"
-	StatusInactive = "inactive"
-)
+// 削除: StatusActiveとStatusInactiveは不要
 
 var (
 	ErrInvalidUsername = errors.New("invalid username")
@@ -25,16 +22,14 @@ var (
 )
 
 type User struct {
-	ID             string    `json:"id" db:"id"`
-	Username       string    `json:"username" db:"username"`
-	Email          string    `json:"email" db:"email"`
-	PasswordHash   string    `json:"-" db:"password_hash"`
-	EmailVerified  bool      `json:"email_verified" db:"email_verified"`
-	Status         string    `json:"status" db:"status"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
-	OrganizationID *string   `json:"organization_id" db:"organization_id"`
-	ParentUserID   *string   `json:"parent_user_id" db:"parent_user_id"`
+	ID            string    `json:"id" db:"id"`
+	Username      string    `json:"username" db:"username"`
+	Email         string    `json:"email" db:"email"`
+	PasswordHash  string    `json:"-" db:"password_hash"`
+	EmailVerified bool      `json:"email_verified" db:"email_verified"`
+	IsActive      bool      `json:"is_active" db:"is_active"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
 }
 
 func NewUser(username, email, password string) (*User, error) {
@@ -53,7 +48,7 @@ func NewUser(username, email, password string) (*User, error) {
 		Username:      username,
 		Email:         email,
 		EmailVerified: false,
-		Status:        StatusActive,
+		IsActive:      true,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -94,9 +89,7 @@ func (u *User) SetEmailVerified(verified bool) {
 	u.UpdatedAt = time.Now()
 }
 
-func (u *User) IsActive() bool {
-	return u.Status == StatusActive
-}
+// IsActiveフィールドを直接使用するため、メソッドは削除
 
 func (u *User) setPassword(password string) error {
 	if err := validatePassword(password); err != nil {
