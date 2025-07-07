@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/dqx0/glen/user-service/internal/models"
+	"github.com/dqx0/glen/user-service/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/dqx0/glen/user-service/internal/models"
-	"github.com/dqx0/glen/user-service/internal/repository"
 )
 
 // MockUserRepository は UserRepository のモック
@@ -131,11 +131,11 @@ func TestUserService_Register(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := new(MockUserRepository)
 			tt.setupMock(mockRepo)
-			
+
 			service := NewUserService(mockRepo)
-			
+
 			user, err := service.Register(context.Background(), tt.username, tt.email, tt.password)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, user)
@@ -147,9 +147,9 @@ func TestUserService_Register(t *testing.T) {
 				require.NotNil(t, user)
 				assert.Equal(t, tt.username, user.Username)
 				assert.Equal(t, tt.email, user.Email)
-				assert.True(t, user.IsActive)
+				assert.True(t, user.IsActive())
 			}
-			
+
 			mockRepo.AssertExpectations(t)
 		})
 	}
@@ -214,11 +214,11 @@ func TestUserService_Login(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := new(MockUserRepository)
 			tt.setupMock(mockRepo)
-			
+
 			service := NewUserService(mockRepo)
-			
+
 			user, err := service.Login(context.Background(), tt.username, tt.password)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, user)
@@ -230,7 +230,7 @@ func TestUserService_Login(t *testing.T) {
 				require.NotNil(t, user)
 				assert.Equal(t, tt.username, user.Username)
 			}
-			
+
 			mockRepo.AssertExpectations(t)
 		})
 	}
@@ -270,11 +270,11 @@ func TestUserService_GetUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := new(MockUserRepository)
 			tt.setupMock(mockRepo)
-			
+
 			service := NewUserService(mockRepo)
-			
+
 			user, err := service.GetUser(context.Background(), tt.username)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, user)
@@ -286,7 +286,7 @@ func TestUserService_GetUser(t *testing.T) {
 				require.NotNil(t, user)
 				assert.Equal(t, tt.username, user.Username)
 			}
-			
+
 			mockRepo.AssertExpectations(t)
 		})
 	}

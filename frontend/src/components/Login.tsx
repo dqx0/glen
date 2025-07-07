@@ -20,8 +20,15 @@ const Login: React.FC = () => {
     }
 
     try {
+      console.log('Login component - starting login process');
       await login(username, password);
-      navigate('/dashboard');
+      console.log('Login component - login completed, waiting briefly before navigation');
+      
+      // 少し待ってから遷移（ユーザー状態の更新を待つ）
+      setTimeout(() => {
+        console.log('Login component - navigating to dashboard');
+        navigate('/dashboard');
+      }, 100);
     } catch (error) {
       // エラーはAuthContextで処理済み
       console.error('Login failed:', error);

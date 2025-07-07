@@ -216,7 +216,7 @@ fullstack-docker:
 # フルスタック停止（Docker Compose）
 fullstack-docker-stop:
 	@echo "🛑 Stopping full Glen ID Platform stack..."
-	docker-compose -f infrastructure/docker/docker-compose.fullstack.yml down
+	docker compose -f infrastructure/docker/docker-compose.fullstack.yml down -v
 	@echo "✅ Full stack stopped"
 
 # フルスタックログ表示

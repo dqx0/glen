@@ -106,7 +106,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Username:      user.Username,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
-		IsActive:      user.IsActive,
+		IsActive:      user.IsActive(),
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
@@ -152,7 +152,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Username:      user.Username,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
-		IsActive:      user.IsActive,
+		IsActive:      user.IsActive(),
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
@@ -189,7 +189,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		Username:      user.Username,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
-		IsActive:      user.IsActive,
+		IsActive:      user.IsActive(),
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
@@ -199,6 +199,50 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		User:    userResp,
 	})
+}
+
+// WebAuthn関連のハンドラー
+
+// WebAuthnRegisterStart handles WebAuthn registration start requests
+func (h *UserHandler) WebAuthnRegisterStart(w http.ResponseWriter, r *http.Request) {
+	h.writeErrorResponse(w, http.StatusNotImplemented, "WebAuthn registration not yet implemented")
+}
+
+// WebAuthnRegisterFinish handles WebAuthn registration finish requests
+func (h *UserHandler) WebAuthnRegisterFinish(w http.ResponseWriter, r *http.Request) {
+	h.writeErrorResponse(w, http.StatusNotImplemented, "WebAuthn registration not yet implemented")
+}
+
+// WebAuthnAuthenticateStart handles WebAuthn authentication start requests
+func (h *UserHandler) WebAuthnAuthenticateStart(w http.ResponseWriter, r *http.Request) {
+	h.writeErrorResponse(w, http.StatusNotImplemented, "WebAuthn authentication not yet implemented")
+}
+
+// WebAuthnAuthenticateFinish handles WebAuthn authentication finish requests
+func (h *UserHandler) WebAuthnAuthenticateFinish(w http.ResponseWriter, r *http.Request) {
+	h.writeErrorResponse(w, http.StatusNotImplemented, "WebAuthn authentication not yet implemented")
+}
+
+// GetWebAuthnCredentials handles GET requests for WebAuthn credentials
+func (h *UserHandler) GetWebAuthnCredentials(w http.ResponseWriter, r *http.Request) {
+	h.writeErrorResponse(w, http.StatusNotImplemented, "WebAuthn credentials list not yet implemented")
+}
+
+// DeleteWebAuthnCredential handles DELETE requests for WebAuthn credentials
+func (h *UserHandler) DeleteWebAuthnCredential(w http.ResponseWriter, r *http.Request) {
+	h.writeErrorResponse(w, http.StatusNotImplemented, "WebAuthn credential deletion not yet implemented")
+}
+
+// HandleWebAuthnCredentials handles WebAuthn credentials management
+func (h *UserHandler) HandleWebAuthnCredentials(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		h.GetWebAuthnCredentials(w, r)
+	case "DELETE":
+		h.DeleteWebAuthnCredential(w, r)
+	default:
+		h.writeErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 // writeErrorResponse はエラーレスポンスを書き込む

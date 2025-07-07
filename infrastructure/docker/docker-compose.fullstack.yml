@@ -13,12 +13,30 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../../schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U glen_dev -d glen_dev"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Database migration
+  migrator:
+    build:
+      context: ../../tools/migrator
+      dockerfile: Dockerfile
+    container_name: glen-migrator
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=glen_dev
+      - DB_USER=glen_dev
+      - DB_PASSWORD=glen_dev_pass
+      - DB_SSLMODE=disable
+      - ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   # Redis
   redis:
@@ -58,6 +76,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
       interval: 30s
@@ -86,6 +106,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
       interval: 30s
@@ -114,6 +136,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 30s

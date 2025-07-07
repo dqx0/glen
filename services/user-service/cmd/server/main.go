@@ -33,6 +33,13 @@ func main() {
 	mux.HandleFunc("POST /api/v1/users/login", userHandler.Login)
 	mux.HandleFunc("GET /api/v1/users", userHandler.GetUser)
 
+	// WebAuthn関連のエンドポイント
+	mux.HandleFunc("/api/v1/webauthn/register/start", userHandler.WebAuthnRegisterStart)
+	mux.HandleFunc("/api/v1/webauthn/register/finish", userHandler.WebAuthnRegisterFinish)
+	mux.HandleFunc("/api/v1/webauthn/authenticate/start", userHandler.WebAuthnAuthenticateStart)
+	mux.HandleFunc("/api/v1/webauthn/authenticate/finish", userHandler.WebAuthnAuthenticateFinish)
+	mux.HandleFunc("/api/v1/webauthn/credentials", userHandler.HandleWebAuthnCredentials)
+
 	// ヘルスチェック
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

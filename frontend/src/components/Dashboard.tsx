@@ -26,6 +26,7 @@ const Dashboard: React.FC = () => {
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('Dashboard - useEffect, user:', user);
     if (user) {
       loadTokens();
     }

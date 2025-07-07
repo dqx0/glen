@@ -55,8 +55,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
 
     try {
+      console.log('AuthContext: Starting login process...');
+      
       // ユーザーログインAPI
       const userResponse = await UserService.login({ username, password });
+      console.log('AuthContext: User login successful:', userResponse.user);
       
       // JWTトークン発行API
       const authResponse = await AuthService.login({
@@ -65,6 +68,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         session_name: 'web-session',
         scopes: ['read', 'write'],
       });
+      console.log('AuthContext: JWT token received');
 
       // ユーザー情報とトークンを保存
       setUser(userResponse.user);
@@ -74,12 +78,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // ユーザー名もローカルストレージに保存（トークンリフレッシュ用）
       localStorage.setItem('username', userResponse.user.username);
       
+      console.log('AuthContext: Login complete, user state set to:', userResponse.user);
+      
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || 'ログインに失敗しました';
+      console.error('AuthContext: Login error details:', error);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'ログインに失敗しました';
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
       setLoading(false);
+      console.log('AuthContext: Loading set to false');
     }
   };
 

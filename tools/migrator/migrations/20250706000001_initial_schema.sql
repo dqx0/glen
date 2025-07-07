@@ -8,82 +8,66 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Users table
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id TEXT PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE,
     password_hash TEXT,
     email_verified BOOLEAN DEFAULT FALSE,
-    is_active BOOLEAN DEFAULT TRUE,
+    status VARCHAR(20) DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- WebAuthn credentials table
 CREATE TABLE webauthn_credentials (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     credential_id TEXT UNIQUE NOT NULL,
     public_key BYTEA NOT NULL,
-    attestation_type TEXT NOT NULL,
-    transport TEXT[] NOT NULL DEFAULT '{}',
-    flags JSONB NOT NULL DEFAULT '{}',
-    authenticator JSONB NOT NULL DEFAULT '{}',
+    counter BIGINT DEFAULT 0,
     name TEXT NOT NULL DEFAULT 'Security Key',
-    sign_count INTEGER DEFAULT 0,
+    transport TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_used_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Social accounts table
 CREATE TABLE social_accounts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     provider VARCHAR(50) NOT NULL,
-    provider_user_id TEXT NOT NULL,
-    provider_username TEXT,
-    provider_email TEXT,
-    access_token TEXT,
-    refresh_token TEXT,
-    expires_at TIMESTAMP WITH TIME ZONE,
+    provider_id TEXT NOT NULL,
+    email TEXT,
+    display_name TEXT,
+    profile_data JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(provider, provider_user_id)
+    UNIQUE(provider, provider_id)
 );
 
--- Refresh tokens table  
-CREATE TABLE refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+-- API tokens table (統合テーブル)
+CREATE TABLE api_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_type VARCHAR(20) NOT NULL, -- 'api_key', 'refresh_token'
     token_hash TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL,
-    scopes TEXT[] NOT NULL DEFAULT '{}',
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    last_used_at TIMESTAMP WITH TIME ZONE
-);
-
--- API keys table
-CREATE TABLE api_keys (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    key_hash TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    scopes TEXT[] NOT NULL DEFAULT '{}',
+    scopes TEXT[],
+    expires_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_used_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Indexes for performance
 CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL;
 CREATE INDEX idx_webauthn_credentials_user_id ON webauthn_credentials(user_id);
 CREATE INDEX idx_webauthn_credentials_credential_id ON webauthn_credentials(credential_id);
 CREATE INDEX idx_social_accounts_user_id ON social_accounts(user_id);
-CREATE INDEX idx_social_accounts_provider ON social_accounts(provider, provider_user_id);
-CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-CREATE INDEX idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
-CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
-CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX idx_social_accounts_provider ON social_accounts(provider, provider_id);
+CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
+CREATE INDEX idx_api_tokens_token_hash ON api_tokens(token_hash);
+CREATE INDEX idx_api_tokens_type ON api_tokens(token_type);
 
 -- Update triggers for updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -110,10 +94,9 @@ DROP TRIGGER IF EXISTS update_social_accounts_updated_at ON social_accounts;
 DROP FUNCTION IF EXISTS update_updated_at_column();
 
 -- Drop indexes
-DROP INDEX IF EXISTS idx_api_keys_key_hash;
-DROP INDEX IF EXISTS idx_api_keys_user_id;
-DROP INDEX IF EXISTS idx_refresh_tokens_token_hash;
-DROP INDEX IF EXISTS idx_refresh_tokens_user_id;
+DROP INDEX IF EXISTS idx_api_tokens_type;
+DROP INDEX IF EXISTS idx_api_tokens_token_hash;
+DROP INDEX IF EXISTS idx_api_tokens_user_id;
 DROP INDEX IF EXISTS idx_social_accounts_provider;
 DROP INDEX IF EXISTS idx_social_accounts_user_id;
 DROP INDEX IF EXISTS idx_webauthn_credentials_credential_id;
@@ -122,8 +105,7 @@ DROP INDEX IF EXISTS idx_users_email;
 DROP INDEX IF EXISTS idx_users_username;
 
 -- Drop tables
-DROP TABLE IF EXISTS api_keys;
-DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS api_tokens;
 DROP TABLE IF EXISTS social_accounts;
 DROP TABLE IF EXISTS webauthn_credentials;
 DROP TABLE IF EXISTS users;

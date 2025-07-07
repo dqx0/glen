@@ -27,7 +27,7 @@ type User struct {
 	Email         string    `json:"email" db:"email"`
 	PasswordHash  string    `json:"-" db:"password_hash"`
 	EmailVerified bool      `json:"email_verified" db:"email_verified"`
-	IsActive      bool      `json:"is_active" db:"is_active"`
+	Status        string    `json:"status" db:"status"`
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
 }
@@ -48,7 +48,7 @@ func NewUser(username, email, password string) (*User, error) {
 		Username:      username,
 		Email:         email,
 		EmailVerified: false,
-		IsActive:      true,
+		Status:        "active",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -89,7 +89,10 @@ func (u *User) SetEmailVerified(verified bool) {
 	u.UpdatedAt = time.Now()
 }
 
-// IsActiveフィールドを直接使用するため、メソッドは削除
+// IsActive はユーザーがアクティブかどうかをチェックする
+func (u *User) IsActive() bool {
+	return u.Status == "active"
+}
 
 func (u *User) setPassword(password string) error {
 	if err := validatePassword(password); err != nil {

@@ -9,7 +9,10 @@ interface PrivateRouteProps {
 const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
 
+  console.log('PrivateRoute - loading:', loading, 'user:', user);
+
   if (loading) {
+    console.log('PrivateRoute - still loading, showing loading screen');
     return (
       <div style={{ 
         display: 'flex', 
@@ -22,7 +25,13 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
     );
   }
 
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
+  if (user) {
+    console.log('PrivateRoute - user authenticated, showing protected content');
+    return <>{children}</>;
+  } else {
+    console.log('PrivateRoute - no user, redirecting to login');
+    return <Navigate to="/login" replace />;
+  }
 };
 
 export default PrivateRoute;

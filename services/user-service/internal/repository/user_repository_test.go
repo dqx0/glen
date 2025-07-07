@@ -164,7 +164,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			email TEXT UNIQUE,
 			password_hash TEXT,
 			email_verified BOOLEAN DEFAULT FALSE,
-			is_active BOOLEAN DEFAULT TRUE,
+			status VARCHAR(20) DEFAULT 'active',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			organization_id TEXT,
