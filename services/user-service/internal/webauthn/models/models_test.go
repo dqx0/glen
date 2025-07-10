@@ -242,13 +242,14 @@ func TestSessionData(t *testing.T) {
 		{
 			name: "Valid_SessionData",
 			sessionData: SessionData{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				Challenge:   []byte("test-challenge-data-12345678901234567890"),
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				AllowedCredentialIDs: [][]byte{
 					[]byte("credential-1"),
 					[]byte("credential-2"),
 				},
-				Expires:      time.Now().Add(5 * time.Minute),
+				ExpiresAt:    time.Now().Add(5 * time.Minute),
 				UserVerification: UserVerificationRequired,
 			},
 			expectError: false,
@@ -256,8 +257,9 @@ func TestSessionData(t *testing.T) {
 		{
 			name: "Missing_Challenge",
 			sessionData: SessionData{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
-				Expires:     time.Now().Add(5 * time.Minute),
+				ExpiresAt:   time.Now().Add(5 * time.Minute),
 				UserVerification: UserVerificationRequired,
 			},
 			expectError: true,
@@ -266,9 +268,10 @@ func TestSessionData(t *testing.T) {
 		{
 			name: "Challenge_Too_Short",
 			sessionData: SessionData{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				Challenge:   []byte("short"),
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
-				Expires:     time.Now().Add(5 * time.Minute),
+				ExpiresAt:   time.Now().Add(5 * time.Minute),
 				UserVerification: UserVerificationRequired,
 			},
 			expectError: true,
@@ -277,8 +280,9 @@ func TestSessionData(t *testing.T) {
 		{
 			name: "Missing_UserID",
 			sessionData: SessionData{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				Challenge:   []byte("test-challenge-data-12345678901234567890"),
-				Expires:     time.Now().Add(5 * time.Minute),
+				ExpiresAt:   time.Now().Add(5 * time.Minute),
 				UserVerification: UserVerificationRequired,
 			},
 			expectError: true,
@@ -287,9 +291,10 @@ func TestSessionData(t *testing.T) {
 		{
 			name: "Invalid_UserID_Format",
 			sessionData: SessionData{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				Challenge:   []byte("test-challenge-data-12345678901234567890"),
 				UserID:      "invalid-uuid",
-				Expires:     time.Now().Add(5 * time.Minute),
+				ExpiresAt:   time.Now().Add(5 * time.Minute),
 				UserVerification: UserVerificationRequired,
 			},
 			expectError: true,
@@ -298,9 +303,10 @@ func TestSessionData(t *testing.T) {
 		{
 			name: "Expired_Session",
 			sessionData: SessionData{
+				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				Challenge:   []byte("test-challenge-data-12345678901234567890"),
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
-				Expires:     time.Now().Add(-1 * time.Minute),
+				ExpiresAt:   time.Now().Add(-1 * time.Minute),
 				UserVerification: UserVerificationRequired,
 			},
 			expectError: true,
@@ -325,14 +331,18 @@ func TestSessionData(t *testing.T) {
 // TestSessionDataJSONSerialization tests JSON serialization for SessionData
 func TestSessionDataJSONSerialization(t *testing.T) {
 	sessionData := SessionData{
+		ID:          "550e8400-e29b-41d4-a716-446655440000",
 		Challenge:   []byte("test-challenge-data-12345678901234567890"),
 		UserID:      "550e8400-e29b-41d4-a716-446655440000",
 		AllowedCredentialIDs: [][]byte{
 			[]byte("credential-1"),
 			[]byte("credential-2"),
 		},
-		Expires:      time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+		ExpiresAt:    time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
+		CreatedAt:    time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC),
 		UserVerification: UserVerificationRequired,
+		// Also test backwards compatibility
+		Expires:      time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC),
 	}
 
 	// Test JSON marshaling
@@ -345,10 +355,12 @@ func TestSessionDataJSONSerialization(t *testing.T) {
 	require.NoError(t, err, "JSON unmarshaling should not fail")
 
 	// Verify data integrity
+	assert.Equal(t, sessionData.ID, unmarshaled.ID)
 	assert.Equal(t, sessionData.Challenge, unmarshaled.Challenge)
 	assert.Equal(t, sessionData.UserID, unmarshaled.UserID)
 	assert.Equal(t, sessionData.AllowedCredentialIDs, unmarshaled.AllowedCredentialIDs)
-	assert.True(t, sessionData.Expires.Equal(unmarshaled.Expires))
+	assert.True(t, sessionData.ExpiresAt.Equal(unmarshaled.ExpiresAt))
+	assert.True(t, sessionData.CreatedAt.Equal(unmarshaled.CreatedAt))
 	assert.Equal(t, sessionData.UserVerification, unmarshaled.UserVerification)
 }
 
@@ -356,52 +368,75 @@ func TestSessionDataJSONSerialization(t *testing.T) {
 func TestWebAuthnError(t *testing.T) {
 	tests := []struct {
 		name         string
-		errorType    ErrorType
+		errorType    WebAuthnErrorType
 		message      string
+		details      string
 		cause        error
 		expectedCode int
 	}{
 		{
 			name:         "ValidationError",
-			errorType:    ErrorTypeValidation,
+			errorType:    ErrValidationFailed,
 			message:      "Invalid credential data",
+			details:      "Missing required field",
 			cause:        nil,
 			expectedCode: 400,
 		},
 		{
 			name:         "AuthenticationError",
-			errorType:    ErrorTypeAuthentication,
+			errorType:    ErrAuthenticationFailed,
 			message:      "Authentication failed",
+			details:      "Invalid signature",
 			cause:        nil,
 			expectedCode: 401,
 		},
 		{
 			name:         "NotFoundError",
-			errorType:    ErrorTypeNotFound,
+			errorType:    ErrCredentialNotFound,
 			message:      "Credential not found",
+			details:      "",
 			cause:        nil,
 			expectedCode: 404,
 		},
 		{
 			name:         "InternalError",
-			errorType:    ErrorTypeInternal,
+			errorType:    ErrInternalError,
 			message:      "Database connection failed",
+			details:      "Connection timeout",
 			cause:        assert.AnError,
 			expectedCode: 500,
+		},
+		{
+			name:         "LegacyValidationError",
+			errorType:    WebAuthnErrorType(ErrorTypeValidation),
+			message:      "Legacy validation error",
+			details:      "",
+			cause:        nil,
+			expectedCode: 400,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := NewWebAuthnError(tt.errorType, tt.message, tt.cause)
+			var err *WebAuthnError
+			if tt.cause != nil {
+				err = NewWebAuthnErrorWithCause(tt.errorType, tt.message, tt.details, tt.cause)
+			} else {
+				err = NewWebAuthnError(tt.errorType, tt.message, tt.details)
+			}
 
 			assert.Equal(t, tt.errorType, err.Type)
+			assert.Equal(t, string(tt.errorType), err.Code)
 			assert.Equal(t, tt.message, err.Message)
+			assert.Equal(t, tt.details, err.Details)
 			assert.Equal(t, tt.cause, err.Cause)
 			assert.Equal(t, tt.expectedCode, err.HTTPStatusCode())
 
 			// Test error message formatting
 			expectedErrorMsg := tt.message
+			if tt.details != "" {
+				expectedErrorMsg += ": " + tt.details
+			}
 			if tt.cause != nil {
 				expectedErrorMsg += ": " + tt.cause.Error()
 			}

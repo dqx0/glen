@@ -17,12 +17,13 @@ const (
 	TransportNFC      AuthenticatorTransport = "nfc"
 	TransportBLE      AuthenticatorTransport = "ble"
 	TransportInternal AuthenticatorTransport = "internal"
+	TransportHybrid   AuthenticatorTransport = "hybrid"
 )
 
 // IsValid checks if the transport is valid
 func (t AuthenticatorTransport) IsValid() bool {
 	switch t {
-	case TransportUSB, TransportNFC, TransportBLE, TransportInternal:
+	case TransportUSB, TransportNFC, TransportBLE, TransportInternal, TransportHybrid:
 		return true
 	default:
 		return false
@@ -117,15 +118,24 @@ func (c *WebAuthnCredential) Validate() error {
 
 // SessionData represents temporary session data for WebAuthn ceremonies
 type SessionData struct {
+	ID                   string                       `json:"id" db:"id" validate:"required"`
 	Challenge            []byte                       `json:"challenge" db:"challenge" validate:"required"`
 	UserID               string                       `json:"user_id" db:"user_id" validate:"required,uuid4"`
 	AllowedCredentialIDs [][]byte                     `json:"allowed_credential_ids" db:"allowed_credential_ids"`
-	Expires              time.Time                    `json:"expires" db:"expires"`
+	ExpiresAt            time.Time                    `json:"expires_at" db:"expires_at"`
+	CreatedAt            time.Time                    `json:"created_at" db:"created_at"`
 	UserVerification     UserVerificationRequirement `json:"user_verification" db:"user_verification"`
+	
+	// Deprecated: Use ExpiresAt instead
+	Expires time.Time `json:"expires,omitempty" db:"-"`
 }
 
 // Validate validates the SessionData
 func (s *SessionData) Validate() error {
+	if s.ID == "" {
+		return errors.New("ID is required")
+	}
+	
 	if len(s.Challenge) == 0 {
 		return errors.New("Challenge is required")
 	}
@@ -143,7 +153,13 @@ func (s *SessionData) Validate() error {
 		return errors.New("UserID must be a valid UUID")
 	}
 
-	if s.Expires.Before(time.Now()) {
+	// Use ExpiresAt, but fallback to Expires for backwards compatibility
+	expiryTime := s.ExpiresAt
+	if expiryTime.IsZero() && !s.Expires.IsZero() {
+		expiryTime = s.Expires
+	}
+
+	if expiryTime.Before(time.Now()) {
 		return errors.New("Session has expired")
 	}
 
@@ -156,61 +172,113 @@ func (s *SessionData) Validate() error {
 
 // IsExpired checks if the session has expired
 func (s *SessionData) IsExpired() bool {
-	return s.Expires.Before(time.Now())
+	// Use ExpiresAt, but fallback to Expires for backwards compatibility
+	expiryTime := s.ExpiresAt
+	if expiryTime.IsZero() && !s.Expires.IsZero() {
+		expiryTime = s.Expires
+	}
+	return expiryTime.Before(time.Now())
 }
 
-// ErrorType represents the type of WebAuthn error
-type ErrorType string
+// WebAuthnErrorType represents the type of WebAuthn error  
+type WebAuthnErrorType string
 
 const (
-	ErrorTypeValidation     ErrorType = "validation"
-	ErrorTypeAuthentication ErrorType = "authentication"
-	ErrorTypeNotFound       ErrorType = "not_found"
-	ErrorTypeInternal       ErrorType = "internal"
-	ErrorTypeTimeout        ErrorType = "timeout"
-	ErrorTypeRateLimited    ErrorType = "rate_limited"
+	ErrRegistrationFailed   WebAuthnErrorType = "REGISTRATION_FAILED"
+	ErrAuthenticationFailed WebAuthnErrorType = "AUTHENTICATION_FAILED"
+	ErrCredentialNotFound   WebAuthnErrorType = "CREDENTIAL_NOT_FOUND"
+	ErrInvalidChallenge     WebAuthnErrorType = "INVALID_CHALLENGE"
+	ErrInvalidOrigin        WebAuthnErrorType = "INVALID_ORIGIN"
+	ErrInvalidSignature     WebAuthnErrorType = "INVALID_SIGNATURE"
+	ErrSessionExpired       WebAuthnErrorType = "SESSION_EXPIRED"
+	ErrValidationFailed     WebAuthnErrorType = "VALIDATION_FAILED"
+	ErrInternalError        WebAuthnErrorType = "INTERNAL_ERROR"
+	ErrRateLimited          WebAuthnErrorType = "RATE_LIMITED"
+	ErrTimeout              WebAuthnErrorType = "TIMEOUT"
+	
+	// Legacy error types for backwards compatibility
+	ErrorTypeValidation     = "validation"
+	ErrorTypeAuthentication = "authentication" 
+	ErrorTypeNotFound       = "not_found"
+	ErrorTypeInternal       = "internal"
+	ErrorTypeTimeout        = "timeout"
+	ErrorTypeRateLimited    = "rate_limited"
 )
 
 // WebAuthnError represents a custom error for WebAuthn operations
 type WebAuthnError struct {
-	Type    ErrorType `json:"type"`
-	Message string    `json:"message"`
-	Cause   error     `json:"cause,omitempty"`
+	Type    WebAuthnErrorType `json:"type"`
+	Code    string           `json:"code"`
+	Message string           `json:"message"`
+	Details string           `json:"details,omitempty"`
+	Cause   error            `json:"cause,omitempty"`
 }
 
 // Error implements the error interface
 func (e *WebAuthnError) Error() string {
-	if e.Cause != nil {
-		return e.Message + ": " + e.Cause.Error()
+	msg := e.Message
+	if e.Details != "" {
+		msg += ": " + e.Details
 	}
-	return e.Message
+	if e.Cause != nil {
+		msg += ": " + e.Cause.Error()
+	}
+	return msg
 }
 
 // HTTPStatusCode returns the appropriate HTTP status code for the error
 func (e *WebAuthnError) HTTPStatusCode() int {
 	switch e.Type {
-	case ErrorTypeValidation:
+	case ErrValidationFailed:
 		return 400
-	case ErrorTypeAuthentication:
+	case ErrAuthenticationFailed, ErrInvalidSignature, ErrInvalidChallenge:
 		return 401
-	case ErrorTypeNotFound:
+	case ErrCredentialNotFound:
 		return 404
-	case ErrorTypeTimeout:
+	case ErrTimeout:
 		return 408
-	case ErrorTypeRateLimited:
+	case ErrRateLimited:
 		return 429
-	case ErrorTypeInternal:
+	case ErrInternalError:
 		return 500
 	default:
-		return 500
+		// Handle legacy error types for backwards compatibility
+		switch string(e.Type) {
+		case ErrorTypeValidation:
+			return 400
+		case ErrorTypeAuthentication:
+			return 401
+		case ErrorTypeNotFound:
+			return 404
+		case ErrorTypeTimeout:
+			return 408
+		case ErrorTypeRateLimited:
+			return 429
+		case ErrorTypeInternal:
+			return 500
+		default:
+			return 500
+		}
 	}
 }
 
 // NewWebAuthnError creates a new WebAuthnError
-func NewWebAuthnError(errorType ErrorType, message string, cause error) *WebAuthnError {
+func NewWebAuthnError(errorType WebAuthnErrorType, message string, details string) *WebAuthnError {
 	return &WebAuthnError{
 		Type:    errorType,
+		Code:    string(errorType),
 		Message: message,
+		Details: details,
+	}
+}
+
+// NewWebAuthnErrorWithCause creates a new WebAuthnError with a cause
+func NewWebAuthnErrorWithCause(errorType WebAuthnErrorType, message string, details string, cause error) *WebAuthnError {
+	return &WebAuthnError{
+		Type:    errorType,
+		Code:    string(errorType),
+		Message: message,
+		Details: details,
 		Cause:   cause,
 	}
 }
@@ -227,6 +295,16 @@ func GetWebAuthnError(err error) *WebAuthnError {
 		return webAuthnErr
 	}
 	return nil
+}
+
+// Legacy function for backwards compatibility with ErrorType
+func NewWebAuthnErrorLegacy(errorType string, message string, cause error) *WebAuthnError {
+	return &WebAuthnError{
+		Type:    WebAuthnErrorType(errorType),
+		Code:    errorType,
+		Message: message,
+		Cause:   cause,
+	}
 }
 
 // CredentialDescriptor represents a credential descriptor for WebAuthn
@@ -416,4 +494,154 @@ func StringToTransports(s string) []AuthenticatorTransport {
 	}
 	
 	return transports
+}
+
+// Request/Response Models for WebAuthn API Endpoints
+
+// RegistrationStartRequest represents a request to start WebAuthn registration
+type RegistrationStartRequest struct {
+	UserID   string `json:"user_id" validate:"required,uuid4"`
+	Username string `json:"username" validate:"required,min=1,max=64"`
+	
+	// Optional registration options
+	Options *RegistrationOptions `json:"options,omitempty"`
+}
+
+// RegistrationOptions represents optional parameters for registration
+type RegistrationOptions struct {
+	Timeout                        *int                             `json:"timeout,omitempty"`
+	ResidentKeyRequirement         ResidentKeyRequirement          `json:"resident_key,omitempty"`
+	UserVerification               UserVerificationRequirement     `json:"user_verification,omitempty"`
+	AttestationConveyancePreference AttestationConveyancePreference `json:"attestation,omitempty"`
+	AuthenticatorAttachment        AuthenticatorAttachment         `json:"authenticator_attachment,omitempty"`
+}
+
+// RegistrationStartResponse represents the response to a registration start request
+type RegistrationStartResponse struct {
+	SessionID string                               `json:"session_id"`
+	Options   *PublicKeyCredentialCreationOptions `json:"options"`
+}
+
+// PublicKeyCredentialCreationOptions represents the WebAuthn creation options
+type PublicKeyCredentialCreationOptions struct {
+	Challenge              []byte                            `json:"challenge"`
+	RP                     *RelyingPartyEntity               `json:"rp"`
+	User                   *UserEntity                       `json:"user"`
+	PubKeyCredParams       []PublicKeyCredentialParameters  `json:"pubKeyCredParams"`
+	Timeout                *int                              `json:"timeout,omitempty"`
+	ExcludeCredentials     []CredentialDescriptor           `json:"excludeCredentials,omitempty"`
+	AuthenticatorSelection *AuthenticatorSelectionCriteria  `json:"authenticatorSelection,omitempty"`
+	Attestation            AttestationConveyancePreference  `json:"attestation,omitempty"`
+}
+
+// RelyingPartyEntity represents the relying party
+type RelyingPartyEntity struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// UserEntity represents a WebAuthn user entity
+type UserEntity struct {
+	ID          []byte `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+}
+
+// AuthenticatorSelectionCriteria represents authenticator selection criteria
+type AuthenticatorSelectionCriteria struct {
+	AuthenticatorAttachment AuthenticatorAttachment      `json:"authenticatorAttachment,omitempty"`
+	ResidentKey             ResidentKeyRequirement       `json:"residentKey,omitempty"`
+	RequireResidentKey      bool                         `json:"requireResidentKey,omitempty"`
+	UserVerification        UserVerificationRequirement `json:"userVerification,omitempty"`
+}
+
+// RegistrationFinishRequest represents a request to finish WebAuthn registration
+type RegistrationFinishRequest struct {
+	SessionID string                              `json:"session_id" validate:"required"`
+	Response  *AuthenticatorAttestationResponse  `json:"response" validate:"required"`
+}
+
+// AuthenticatorAttestationResponse represents the authenticator attestation response
+type AuthenticatorAttestationResponse struct {
+	ID       string                              `json:"id"`
+	RawID    []byte                              `json:"rawId"`
+	Type     string                              `json:"type"`
+	Response *AuthenticatorAttestationResponseData `json:"response"`
+}
+
+// AuthenticatorAttestationResponseData represents the response data from attestation
+type AuthenticatorAttestationResponseData struct {
+	ClientDataJSON    []byte   `json:"clientDataJSON"`
+	AttestationObject []byte   `json:"attestationObject"`
+	Transports        []string `json:"transports,omitempty"`
+}
+
+// RegistrationResult represents the result of a registration ceremony
+type RegistrationResult struct {
+	Success      bool                `json:"success"`
+	CredentialID string             `json:"credential_id,omitempty"`
+	Credential   *WebAuthnCredential `json:"credential,omitempty"`
+	Error        string              `json:"error,omitempty"`
+}
+
+// AuthenticationStartRequest represents a request to start WebAuthn authentication
+type AuthenticationStartRequest struct {
+	UserID         string `json:"user_id,omitempty"`
+	UserIdentifier string `json:"user_identifier,omitempty"`
+	
+	// Optional authentication options
+	Options              *AuthenticationOptions `json:"options,omitempty"`
+	AllowedCredentials   [][]byte              `json:"allowed_credentials,omitempty"`
+}
+
+// AuthenticationOptions represents optional parameters for authentication
+type AuthenticationOptions struct {
+	Timeout             *int                         `json:"timeout,omitempty"`
+	UserVerification    UserVerificationRequirement `json:"user_verification,omitempty"`
+	AllowedTransports   []AuthenticatorTransport    `json:"allowed_transports,omitempty"`
+}
+
+// AuthenticationStartResponse represents the response to an authentication start request
+type AuthenticationStartResponse struct {
+	SessionID string                               `json:"session_id"`
+	Options   *PublicKeyCredentialRequestOptions  `json:"options"`
+}
+
+// PublicKeyCredentialRequestOptions represents the WebAuthn request options
+type PublicKeyCredentialRequestOptions struct {
+	Challenge        []byte                      `json:"challenge"`
+	Timeout          *int                        `json:"timeout,omitempty"`
+	RPID             string                      `json:"rpId"`
+	AllowCredentials []CredentialDescriptor     `json:"allowCredentials,omitempty"`
+	UserVerification UserVerificationRequirement `json:"userVerification,omitempty"`
+}
+
+// AuthenticationFinishRequest represents a request to finish WebAuthn authentication
+type AuthenticationFinishRequest struct {
+	SessionID string                         `json:"session_id" validate:"required"`
+	Response  *AuthenticatorAssertionResponse `json:"response" validate:"required"`
+}
+
+// AuthenticatorAssertionResponse represents the authenticator assertion response
+type AuthenticatorAssertionResponse struct {
+	ID       string                            `json:"id"`
+	RawID    []byte                            `json:"rawId"`
+	Type     string                            `json:"type"`
+	Response *AuthenticatorAssertionResponseData `json:"response"`
+}
+
+// AuthenticatorAssertionResponseData represents the response data from assertion
+type AuthenticatorAssertionResponseData struct {
+	ClientDataJSON    []byte `json:"clientDataJSON"`
+	AuthenticatorData []byte `json:"authenticatorData"`
+	Signature         []byte `json:"signature"`
+	UserHandle        []byte `json:"userHandle,omitempty"`
+}
+
+// AuthenticationResult represents the result of an authentication ceremony
+type AuthenticationResult struct {
+	Success      bool   `json:"success"`
+	UserID       string `json:"user_id,omitempty"`
+	CredentialID string `json:"credential_id,omitempty"`
+	Error        string `json:"error,omitempty"`
 }

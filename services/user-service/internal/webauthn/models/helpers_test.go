@@ -344,7 +344,7 @@ func TestIsWebAuthnError(t *testing.T) {
 	}{
 		{
 			name:     "WebAuthnError",
-			err:      NewWebAuthnError(ErrorTypeValidation, "test error", nil),
+			err:      NewWebAuthnError(ErrValidationFailed, "test error", ""),
 			expected: true,
 		},
 		{
@@ -369,7 +369,7 @@ func TestIsWebAuthnError(t *testing.T) {
 
 // TestGetWebAuthnError tests the GetWebAuthnError function
 func TestGetWebAuthnError(t *testing.T) {
-	webAuthnErr := NewWebAuthnError(ErrorTypeValidation, "test error", nil)
+	webAuthnErr := NewWebAuthnError(ErrValidationFailed, "test error", "")
 	
 	tests := []struct {
 		name     string
