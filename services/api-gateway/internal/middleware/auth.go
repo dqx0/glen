@@ -53,6 +53,14 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 		ctx := context.WithValue(r.Context(), "authenticated", true)
 		r = r.WithContext(ctx)
 		
+		// ユーザーIDをヘッダーに設定（プロキシ用）
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token := authHeader[7:]
+			if userID := extractUserIDFromJWT(token); userID != "" {
+				r.Header.Set("X-User-ID", userID)
+			}
+		}
+		
 		// 次のハンドラーを実行
 		handler(w, r)
 	}
@@ -79,6 +87,14 @@ func (a *AuthMiddleware) validateJWTToken(token string) bool {
 	
 	// 開発段階では true を返す
 	return true
+}
+
+// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出する（簡易版）
+func extractUserIDFromJWT(token string) string {
+	// 実際の実装では適切なJWTライブラリを使用してください
+	// ここでは開発用として固定値を返す
+	// TODO: 適切なJWT検証とユーザーID抽出を実装
+	return "test-user-id"
 }
 
 // validateAPIKey はAPIキーを検証する

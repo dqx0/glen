@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -27,28 +26,21 @@ func NewSocialAccountRepository(db *sql.DB) *SocialAccountRepository {
 
 // Create はソーシャルアカウントを作成する
 func (r *SocialAccountRepository) Create(ctx context.Context, account *models.SocialAccount) error {
-	profileDataJSON, err := json.Marshal(account.ProfileData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal profile data: %w", err)
-	}
-
 	query := `
 		INSERT INTO social_accounts (
-			id, user_id, provider, provider_id, email, display_name, 
-			profile_data, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			id, user_id, provider, provider_id, email, username, 
+			created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 
-	_, err = r.db.ExecContext(ctx, query,
+	_, err := r.db.ExecContext(ctx, query,
 		account.ID,
 		account.UserID,
 		account.Provider,
 		account.ProviderID,
 		account.Email,
 		account.DisplayName,
-		string(profileDataJSON),
 		account.CreatedAt,
-		account.UpdatedAt,
 	)
 
 	if err != nil {
@@ -64,14 +56,12 @@ func (r *SocialAccountRepository) Create(ctx context.Context, account *models.So
 // GetByID はIDでソーシャルアカウントを取得する
 func (r *SocialAccountRepository) GetByID(ctx context.Context, id string) (*models.SocialAccount, error) {
 	query := `
-		SELECT id, user_id, provider, provider_id, email, display_name,
-			   profile_data, created_at, updated_at
+		SELECT id, user_id, provider, provider_id, email, username, created_at
 		FROM social_accounts
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	var account models.SocialAccount
-	var profileDataJSON string
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&account.ID,
@@ -80,9 +70,7 @@ func (r *SocialAccountRepository) GetByID(ctx context.Context, id string) (*mode
 		&account.ProviderID,
 		&account.Email,
 		&account.DisplayName,
-		&profileDataJSON,
 		&account.CreatedAt,
-		&account.UpdatedAt,
 	)
 
 	if err != nil {
@@ -92,23 +80,15 @@ func (r *SocialAccountRepository) GetByID(ctx context.Context, id string) (*mode
 		return nil, fmt.Errorf("failed to get social account: %w", err)
 	}
 
-	// JSON デシリアライズ
-	if profileDataJSON != "" {
-		if err := json.Unmarshal([]byte(profileDataJSON), &account.ProfileData); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal profile data: %w", err)
-		}
-	}
-
 	return &account, nil
 }
 
 // GetByUserID はユーザーIDでソーシャルアカウント一覧を取得する
 func (r *SocialAccountRepository) GetByUserID(ctx context.Context, userID string) ([]*models.SocialAccount, error) {
 	query := `
-		SELECT id, user_id, provider, provider_id, email, display_name,
-			   profile_data, created_at, updated_at
+		SELECT id, user_id, provider, provider_id, email, username, created_at
 		FROM social_accounts
-		WHERE user_id = ?
+		WHERE user_id = $1
 		ORDER BY created_at DESC
 	`
 
@@ -122,7 +102,6 @@ func (r *SocialAccountRepository) GetByUserID(ctx context.Context, userID string
 
 	for rows.Next() {
 		var account models.SocialAccount
-		var profileDataJSON string
 
 		err := rows.Scan(
 			&account.ID,
@@ -131,19 +110,10 @@ func (r *SocialAccountRepository) GetByUserID(ctx context.Context, userID string
 			&account.ProviderID,
 			&account.Email,
 			&account.DisplayName,
-			&profileDataJSON,
 			&account.CreatedAt,
-			&account.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan social account: %w", err)
-		}
-
-		// JSON デシリアライズ
-		if profileDataJSON != "" {
-			if err := json.Unmarshal([]byte(profileDataJSON), &account.ProfileData); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal profile data: %w", err)
-			}
 		}
 
 		accounts = append(accounts, &account)
@@ -159,14 +129,12 @@ func (r *SocialAccountRepository) GetByUserID(ctx context.Context, userID string
 // GetByProviderAndProviderID はプロバイダーとプロバイダーIDでソーシャルアカウントを取得する
 func (r *SocialAccountRepository) GetByProviderAndProviderID(ctx context.Context, provider, providerID string) (*models.SocialAccount, error) {
 	query := `
-		SELECT id, user_id, provider, provider_id, email, display_name,
-			   profile_data, created_at, updated_at
+		SELECT id, user_id, provider, provider_id, email, username, created_at
 		FROM social_accounts
-		WHERE provider = ? AND provider_id = ?
+		WHERE provider = $1 AND provider_id = $2
 	`
 
 	var account models.SocialAccount
-	var profileDataJSON string
 
 	err := r.db.QueryRowContext(ctx, query, provider, providerID).Scan(
 		&account.ID,
@@ -175,9 +143,7 @@ func (r *SocialAccountRepository) GetByProviderAndProviderID(ctx context.Context
 		&account.ProviderID,
 		&account.Email,
 		&account.DisplayName,
-		&profileDataJSON,
 		&account.CreatedAt,
-		&account.UpdatedAt,
 	)
 
 	if err != nil {
@@ -187,34 +153,20 @@ func (r *SocialAccountRepository) GetByProviderAndProviderID(ctx context.Context
 		return nil, fmt.Errorf("failed to get social account: %w", err)
 	}
 
-	// JSON デシリアライズ
-	if profileDataJSON != "" {
-		if err := json.Unmarshal([]byte(profileDataJSON), &account.ProfileData); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal profile data: %w", err)
-		}
-	}
-
 	return &account, nil
 }
 
 // Update はソーシャルアカウントを更新する
 func (r *SocialAccountRepository) Update(ctx context.Context, account *models.SocialAccount) error {
-	profileDataJSON, err := json.Marshal(account.ProfileData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal profile data: %w", err)
-	}
-
 	query := `
 		UPDATE social_accounts SET
-			email = ?, display_name = ?, profile_data = ?, updated_at = ?
-		WHERE id = ?
+			email = $1, username = $2
+		WHERE id = $3
 	`
 
 	result, err := r.db.ExecContext(ctx, query,
 		account.Email,
 		account.DisplayName,
-		string(profileDataJSON),
-		account.UpdatedAt,
 		account.ID,
 	)
 
@@ -236,7 +188,7 @@ func (r *SocialAccountRepository) Update(ctx context.Context, account *models.So
 
 // Delete はソーシャルアカウントを削除する
 func (r *SocialAccountRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM social_accounts WHERE id = ?`
+	query := `DELETE FROM social_accounts WHERE id = $1`
 
 	_, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
@@ -249,7 +201,7 @@ func (r *SocialAccountRepository) Delete(ctx context.Context, id string) error {
 
 // DeleteByUserID はユーザーIDでソーシャルアカウントを全て削除する
 func (r *SocialAccountRepository) DeleteByUserID(ctx context.Context, userID string) error {
-	query := `DELETE FROM social_accounts WHERE user_id = ?`
+	query := `DELETE FROM social_accounts WHERE user_id = $1`
 
 	_, err := r.db.ExecContext(ctx, query, userID)
 	if err != nil {

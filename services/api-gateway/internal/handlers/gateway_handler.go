@@ -37,13 +37,10 @@ func (gh *GatewayHandler) ProxyToSocialService(w http.ResponseWriter, r *http.Re
 
 // proxyToService は指定されたサービスにリクエストをプロキシする
 func (gh *GatewayHandler) proxyToService(w http.ResponseWriter, r *http.Request, targetURL, serviceName string) {
-	// リクエストのログ
-	log.Printf("Proxying %s %s to %s", r.Method, r.URL.Path, serviceName)
-	
 	// プロキシリクエストの送信
 	resp, err := gh.serviceProxy.ProxyRequest(targetURL, r)
 	if err != nil {
-		log.Printf("Proxy error for %s: %v", serviceName, err)
+		log.Printf("[PROXY ERROR] Service %s unreachable: %v", serviceName, err)
 		writeErrorResponse(w, http.StatusBadGateway, "Service temporarily unavailable")
 		return
 	}
@@ -51,12 +48,15 @@ func (gh *GatewayHandler) proxyToService(w http.ResponseWriter, r *http.Request,
 	
 	// レスポンスのコピー
 	if err := gh.serviceProxy.CopyResponse(w, resp); err != nil {
-		log.Printf("Response copy error for %s: %v", serviceName, err)
-		// レスポンスが既に開始されている可能性があるため、ログのみ
+		log.Printf("[PROXY ERROR] Failed to copy response from %s: %v", serviceName, err)
 		return
 	}
 	
-	log.Printf("Proxy completed for %s %s -> %d", r.Method, r.URL.Path, resp.StatusCode)
+	// プロキシ完了のログ（エラーの場合のみ詳細ログ）
+	if resp.StatusCode >= 400 {
+		log.Printf("[PROXY ERROR] %s returned error status %d for %s %s", 
+			serviceName, resp.StatusCode, r.Method, r.URL.Path)
+	}
 }
 
 // HealthCheck はAPI Gatewayのヘルスチェックを行う
@@ -211,6 +211,9 @@ func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	// 簡易的なエラーレスポンス
 	response := `{"success":false,"error":"` + message + `"}`
 	w.Write([]byte(response))
+	
+	// エラーレスポンスのログ
+	log.Printf("[ERROR RESPONSE] Sent %d: %s", statusCode, message)
 }
 
 // extractBearerToken はAuthorizationヘッダーからBearerトークンを抽出する

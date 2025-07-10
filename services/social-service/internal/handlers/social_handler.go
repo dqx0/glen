@@ -228,11 +228,15 @@ func (h *SocialHandler) GetUserSocialAccounts(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// ユーザーIDをクエリパラメータから取得
-	userID := r.URL.Query().Get("user_id")
+	// ユーザーIDを取得（認証ミドルウェアまたはクエリパラメータから）
+	userID := getUserIDFromContext(r)
 	if userID == "" {
-		writeErrorResponse(w, http.StatusBadRequest, "user_id is required")
-		return
+		// フォールバック：クエリパラメータから取得
+		userID = r.URL.Query().Get("user_id")
+		if userID == "" {
+			writeErrorResponse(w, http.StatusBadRequest, "authentication required or user_id parameter required")
+			return
+		}
 	}
 
 	accounts, err := h.repo.GetByUserID(r.Context(), userID)
@@ -241,10 +245,46 @@ func (h *SocialHandler) GetUserSocialAccounts(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// フロントエンドの期待する形式に合わせる
 	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
-		"social_accounts": accounts,
-		"count":          len(accounts),
+		"accounts": accounts,
 	})
+}
+
+// getUserIDFromContext は認証ミドルウェアから設定されたユーザーIDを取得する
+func getUserIDFromContext(r *http.Request) string {
+	// 複数の方法でユーザーIDを取得を試みる
+	
+	// 1. コンテキストから取得（認証ミドルウェアが設定）
+	if userID := r.Context().Value("user_id"); userID != nil {
+		if uid, ok := userID.(string); ok && uid != "" {
+			return uid
+		}
+	}
+	
+	// 2. ヘッダーから取得（API Gatewayが設定）
+	if userID := r.Header.Get("X-User-ID"); userID != "" {
+		return userID
+	}
+	
+	// 3. JWTトークンから取得（直接デコード）
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if userID := extractUserIDFromJWT(token); userID != "" {
+			return userID
+		}
+	}
+	
+	return ""
+}
+
+// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出する（簡易版）
+func extractUserIDFromJWT(token string) string {
+	// 実際の実装では適切なJWTライブラリを使用してください
+	// ここでは簡易的な実装として空文字を返す
+	// TODO: 適切なJWT検証とユーザーID抽出を実装
+	return ""
 }
 
 // DeleteSocialAccount はソーシャルアカウントを削除する

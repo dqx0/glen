@@ -314,6 +314,35 @@ frontend-dev:
 	@echo "🎨 Starting frontend development server..."
 	cd frontend && npm run dev
 
+# DB + Redis + Frontend 起動
+debug:
+	@echo "🚀 Starting database, Redis, and frontend..."
+	@echo "📊 Starting PostgreSQL and Redis..."
+	docker-compose -f infrastructure/docker/docker-compose.dev.yml up -d
+	@echo "⏳ Waiting for database to be ready..."
+	@sleep 5
+	@echo "📦 Installing frontend dependencies..."
+	cd frontend && npm install
+	@echo "🎨 Starting frontend development server..."
+	cd frontend && npm run dev &
+	@echo ""
+	@echo "✅ All services started!"
+	@echo "📍 Available services:"
+	@echo "   - Frontend: http://localhost:3000 (or check terminal output)"
+	@echo "   - PostgreSQL: localhost:5432 (glen_dev/glen_dev/glen_dev_pass)"
+	@echo "   - Redis: localhost:6379"
+	@echo ""
+	@echo "🛑 To stop: make debug-stop"
+
+# DB + Redis + Frontend 停止
+debug-stop:
+	@echo "🛑 Stopping all services..."
+	@echo "🛑 Stopping frontend..."
+	@pkill -f "npm run dev" || true
+	@echo "🛑 Stopping database and Redis..."
+	docker-compose -f infrastructure/docker/docker-compose.dev.yml down
+	@echo "✅ All services stopped"
+
 frontend-docker-build:
 	@echo "🐳 Building frontend Docker image..."
 	docker build -t glen/frontend:latest -f frontend/Dockerfile frontend
