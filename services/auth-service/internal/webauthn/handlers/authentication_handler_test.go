@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/models"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/service"
 )
@@ -119,7 +120,7 @@ func TestAuthenticationHandler_StartAuthentication(t *testing.T) {
 			mockService := &mockWebAuthnService{}
 			tt.setupMock(mockService)
 			
-			handler := NewAuthenticationHandler(mockService)
+			handler := NewAuthenticationHandler(mockService, middleware.DefaultJWTConfig())
 			
 			// Create request
 			var body []byte
@@ -204,7 +205,7 @@ func TestAuthenticationHandler_FinishAuthentication(t *testing.T) {
 			mockService := &mockWebAuthnService{}
 			tt.setupMock(mockService)
 			
-			handler := NewAuthenticationHandler(mockService)
+			handler := NewAuthenticationHandler(mockService, middleware.DefaultJWTConfig())
 			
 			// Create request
 			var body []byte
@@ -244,7 +245,7 @@ func TestAuthenticationHandler_FinishAuthentication(t *testing.T) {
 
 func TestAuthenticationHandler_Routes(t *testing.T) {
 	mockService := &mockWebAuthnService{}
-	handler := NewAuthenticationHandler(mockService)
+	handler := NewAuthenticationHandler(mockService, middleware.DefaultJWTConfig())
 	
 	r := chi.NewRouter()
 	handler.RegisterRoutes(r)

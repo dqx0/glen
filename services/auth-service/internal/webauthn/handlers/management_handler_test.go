@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/models"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/service"
 )
@@ -123,7 +124,7 @@ func TestManagementHandler_GetUserCredentials(t *testing.T) {
 			mockService := &mockWebAuthnService{}
 			tt.setupMock(mockService)
 			
-			handler := NewManagementHandler(mockService)
+			handler := NewManagementHandler(mockService, middleware.DefaultJWTConfig())
 			
 			// Create request
 			url := "/webauthn/credentials/" + tt.userID
@@ -215,7 +216,7 @@ func TestManagementHandler_DeleteCredential(t *testing.T) {
 			mockService := &mockWebAuthnService{}
 			tt.setupMock(mockService)
 			
-			handler := NewManagementHandler(mockService)
+			handler := NewManagementHandler(mockService, middleware.DefaultJWTConfig())
 			
 			// Create request
 			url := "/webauthn/credentials/" + tt.userID + "/" + tt.credentialID
@@ -309,7 +310,7 @@ func TestManagementHandler_UpdateCredential(t *testing.T) {
 			mockService := &mockWebAuthnService{}
 			tt.setupMock(mockService)
 			
-			handler := NewManagementHandler(mockService)
+			handler := NewManagementHandler(mockService, middleware.DefaultJWTConfig())
 			
 			// Create request
 			var body []byte
@@ -387,7 +388,7 @@ func TestManagementHandler_GetStatistics(t *testing.T) {
 			mockService := &mockWebAuthnService{}
 			tt.setupMock(mockService)
 			
-			handler := NewManagementHandler(mockService)
+			handler := NewManagementHandler(mockService, middleware.DefaultJWTConfig())
 			
 			req := httptest.NewRequest("GET", "/webauthn/admin/statistics", nil)
 			rr := httptest.NewRecorder()
@@ -448,7 +449,7 @@ func TestManagementHandler_CleanupExpiredData(t *testing.T) {
 			mockService := &mockWebAuthnService{}
 			tt.setupMock(mockService)
 			
-			handler := NewManagementHandler(mockService)
+			handler := NewManagementHandler(mockService, middleware.DefaultJWTConfig())
 			
 			req := httptest.NewRequest("POST", "/webauthn/admin/cleanup", nil)
 			rr := httptest.NewRecorder()
@@ -478,7 +479,7 @@ func TestManagementHandler_CleanupExpiredData(t *testing.T) {
 
 func TestManagementHandler_Routes(t *testing.T) {
 	mockService := &mockWebAuthnService{}
-	handler := NewManagementHandler(mockService)
+	handler := NewManagementHandler(mockService, middleware.DefaultJWTConfig())
 	
 	r := chi.NewRouter()
 	handler.RegisterRoutes(r)

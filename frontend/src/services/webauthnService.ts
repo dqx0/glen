@@ -94,16 +94,33 @@ export class WebAuthnService {
 
       // 4. 認証器からの応答をサーバーに送信して検証
       const finishResponse = await this.finishRegistration({
-        user_id: userId,
-        credential_name: credentialName,
-        credential: this.serializeCredentialForRegistration(credential),
+        session_id: startResponse.session_id,
+        response: this.serializeCredentialForRegistration(credential),
       });
 
-      if (!finishResponse.verified) {
+      if (!finishResponse.success) {
         throw new Error('認証器の検証に失敗しました');
       }
 
-      return finishResponse.credential;
+      // Return a simplified credential object since server doesn't return full credential
+      return {
+        id: finishResponse.credentialId,
+        user_id: userId,
+        credential_id: finishResponse.credentialId,
+        public_key: '',
+        attestation_type: 'none',
+        transport: [],
+        flags: {
+          user_present: true,
+          user_verified: false,
+          backup_eligible: false,
+          backup_state: false,
+        },
+        sign_count: 0,
+        name: credentialName,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
     } catch (error: unknown) {
       console.error('WebAuthn registration failed:', error);
@@ -140,7 +157,7 @@ export class WebAuthnService {
     try {
       // 1. 認証開始 - サーバーからチャレンジとオプションを取得
       const startResponse = await this.startAuthentication({
-        username,
+        user_identifier: username,
         user_verification: 'preferred',
       });
 
@@ -158,11 +175,11 @@ export class WebAuthnService {
 
       // 4. 認証器からの応答をサーバーに送信して検証
       const finishResponse = await this.finishAuthentication({
-        username,
-        credential: this.serializeCredentialForAuthentication(credential),
+        session_id: startResponse.session_id,
+        response: this.serializeCredentialForAuthentication(credential),
       });
 
-      if (!finishResponse.verified) {
+      if (!finishResponse.success) {
         throw new Error('認証に失敗しました');
       }
 
@@ -204,23 +221,28 @@ export class WebAuthnService {
   private static convertRegistrationOptions(
     serverOptions: RegistrationStartResponse
   ): PublicKeyCredentialCreationOptionsExtended {
+    const options = serverOptions.options;
+    if (!options) {
+      throw new Error('Server response missing options field');
+    }
+    
     return {
-      challenge: this.base64ToBuffer(serverOptions.challenge),
-      rp: serverOptions.rp,
+      challenge: this.base64ToBuffer(options.challenge),
+      rp: options.rp,
       user: {
-        id: this.base64ToBuffer(serverOptions.user.id),
-        name: serverOptions.user.name,
-        displayName: serverOptions.user.displayName,
+        id: this.base64ToBuffer(options.user.id),
+        name: options.user.name,
+        displayName: options.user.displayName,
       },
-      pubKeyCredParams: serverOptions.pubKeyCredParams,
-      timeout: serverOptions.timeout,
-      excludeCredentials: serverOptions.excludeCredentials?.map(cred => ({
+      pubKeyCredParams: options.pubKeyCredParams,
+      timeout: options.timeout,
+      excludeCredentials: options.excludeCredentials?.map(cred => ({
         type: cred.type,
         id: this.base64ToBuffer(cred.id),
         transports: cred.transports as AuthenticatorTransport[],
       })),
-      authenticatorSelection: serverOptions.authenticatorSelection,
-      attestation: serverOptions.attestation,
+      authenticatorSelection: options.authenticatorSelection,
+      attestation: options.attestation,
     };
   }
 
@@ -228,16 +250,21 @@ export class WebAuthnService {
   private static convertAuthenticationOptions(
     serverOptions: AuthenticationStartResponse
   ): PublicKeyCredentialRequestOptionsExtended {
+    const options = serverOptions.options;
+    if (!options) {
+      throw new Error('Server response missing options field');
+    }
+    
     return {
-      challenge: this.base64ToBuffer(serverOptions.challenge),
-      timeout: serverOptions.timeout,
-      rpId: serverOptions.rp_id,
-      allowCredentials: serverOptions.allowCredentials?.map(cred => ({
+      challenge: this.base64ToBuffer(options.challenge),
+      timeout: options.timeout,
+      rpId: options.rpId,
+      allowCredentials: options.allowCredentials?.map(cred => ({
         type: cred.type,
         id: this.base64ToBuffer(cred.id),
         transports: cred.transports as AuthenticatorTransport[],
       })),
-      userVerification: serverOptions.user_verification,
+      userVerification: options.userVerification,
     };
   }
 
@@ -275,6 +302,10 @@ export class WebAuthnService {
 
   // Base64文字列をArrayBufferに変換
   private static base64ToBuffer(base64: string): ArrayBuffer {
+    if (!base64 || typeof base64 !== 'string') {
+      throw new Error('Invalid base64 string: value is undefined, null, or not a string');
+    }
+    
     // URL-safe base64 decode
     const base64Url = base64.replace(/-/g, '+').replace(/_/g, '/');
     const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);

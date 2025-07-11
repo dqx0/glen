@@ -2,14 +2,13 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
 	"testing"
 	"time"
 
-	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dqx0/glen/auth-service/internal/webauthn/models"
@@ -19,6 +18,7 @@ import (
 // Real repository implementations for testing
 
 type mockCredRepository struct {
+	mock.Mock
 	credentials map[string]*models.WebAuthnCredential
 }
 
@@ -31,6 +31,12 @@ func (m *mockCredRepository) CreateCredential(ctx context.Context, credential *m
 }
 
 func (m *mockCredRepository) GetCredentialsByUserID(ctx context.Context, userID string) ([]*models.WebAuthnCredential, error) {
+	// If mock expectations are set, use them
+	if len(m.ExpectedCalls) > 0 {
+		args := m.Called(ctx, userID)
+		return args.Get(0).([]*models.WebAuthnCredential), args.Error(1)
+	}
+	// Fallback to simple implementation
 	var credentials []*models.WebAuthnCredential
 	for _, cred := range m.credentials {
 		if cred.UserID == userID {
@@ -41,6 +47,15 @@ func (m *mockCredRepository) GetCredentialsByUserID(ctx context.Context, userID 
 }
 
 func (m *mockCredRepository) GetCredentialByID(ctx context.Context, credentialID []byte) (*models.WebAuthnCredential, error) {
+	// If mock expectations are set, use them
+	if len(m.ExpectedCalls) > 0 {
+		args := m.Called(ctx, credentialID)
+		if args.Get(0) == nil {
+			return nil, args.Error(1)
+		}
+		return args.Get(0).(*models.WebAuthnCredential), args.Error(1)
+	}
+	// Fallback to simple implementation
 	if cred, exists := m.credentials[string(credentialID)]; exists {
 		return cred, nil
 	}
@@ -48,6 +63,12 @@ func (m *mockCredRepository) GetCredentialByID(ctx context.Context, credentialID
 }
 
 func (m *mockCredRepository) UpdateCredential(ctx context.Context, credential *models.WebAuthnCredential) error {
+	// If mock expectations are set, use them
+	if len(m.ExpectedCalls) > 0 {
+		args := m.Called(ctx, credential)
+		return args.Error(0)
+	}
+	// Fallback to simple implementation
 	if _, exists := m.credentials[string(credential.CredentialID)]; !exists {
 		return repository.ErrCredentialNotFound
 	}
@@ -56,6 +77,12 @@ func (m *mockCredRepository) UpdateCredential(ctx context.Context, credential *m
 }
 
 func (m *mockCredRepository) DeleteCredential(ctx context.Context, credentialID []byte) error {
+	// If mock expectations are set, use them
+	if len(m.ExpectedCalls) > 0 {
+		args := m.Called(ctx, credentialID)
+		return args.Error(0)
+	}
+	// Fallback to simple implementation
 	if _, exists := m.credentials[string(credentialID)]; !exists {
 		return repository.ErrCredentialNotFound
 	}
@@ -107,6 +134,12 @@ func (m *mockCredRepository) GetCredentialsByTransport(ctx context.Context, tran
 }
 
 func (m *mockCredRepository) CleanupExpiredCredentials(ctx context.Context, retentionPeriod time.Duration) error {
+	// If mock expectations are set, use them
+	if len(m.ExpectedCalls) > 0 {
+		args := m.Called(ctx, retentionPeriod)
+		return args.Error(0)
+	}
+	// Fallback to simple implementation
 	return nil
 }
 
@@ -117,7 +150,8 @@ func (m *mockCredRepository) GetCredentialStatistics(ctx context.Context) (*repo
 }
 
 type mockSessionStore struct {
-	sessions map[string]*models.SessionData
+	mock.Mock
+	sessions         map[string]*models.SessionData
 	webauthnSessions map[string][]byte
 }
 
@@ -125,7 +159,7 @@ func (m *mockSessionStore) StoreSession(ctx context.Context, session *models.Ses
 	if m.sessions == nil {
 		m.sessions = make(map[string]*models.SessionData)
 	}
-	m.sessions[session.SessionID] = session
+	m.sessions[session.ID] = session
 	return nil
 }
 
@@ -134,58 +168,67 @@ func (m *mockSessionStore) GetSession(ctx context.Context, sessionID string) (*m
 		return session, nil
 	}
 	return nil, repository.ErrSessionNotFound
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*models.SessionData), args.Error(1)
 }
 
 func (m *mockSessionStore) DeleteSession(ctx context.Context, sessionID string) error {
-	args := m.Called(ctx, sessionID)
-	return args.Error(0)
+	if m.sessions != nil {
+		delete(m.sessions, sessionID)
+	}
+	return nil
 }
 
 func (m *mockSessionStore) CleanupExpiredSessions(ctx context.Context) error {
-	args := m.Called(ctx)
-	return args.Error(0)
+	return nil
 }
 
 func (m *mockSessionStore) GetActiveSessionCount(ctx context.Context) (int, error) {
-	args := m.Called(ctx)
-	return args.Int(0), args.Error(1)
+	return len(m.sessions), nil
 }
 
 func (m *mockSessionStore) GetSessionsByUserID(ctx context.Context, userID string) ([]*models.SessionData, error) {
-	args := m.Called(ctx, userID)
-	return args.Get(0).([]*models.SessionData), args.Error(1)
+	var sessions []*models.SessionData
+	for _, session := range m.sessions {
+		if session.UserID == userID {
+			sessions = append(sessions, session)
+		}
+	}
+	return sessions, nil
 }
 
 func (m *mockSessionStore) ValidateSessionExists(ctx context.Context, sessionID string, userID string) (bool, error) {
-	args := m.Called(ctx, sessionID, userID)
-	return args.Bool(0), args.Error(1)
+	if session, exists := m.sessions[sessionID]; exists {
+		return session.UserID == userID, nil
+	}
+	return false, nil
 }
 
 func (m *mockSessionStore) ExtendSessionExpiry(ctx context.Context, sessionID string, newExpiry time.Time) error {
-	args := m.Called(ctx, sessionID, newExpiry)
-	return args.Error(0)
+	if session, exists := m.sessions[sessionID]; exists {
+		session.ExpiresAt = newExpiry
+	}
+	return nil
 }
 
 func (m *mockSessionStore) StoreWebAuthnSession(ctx context.Context, sessionID string, data []byte) error {
-	args := m.Called(ctx, sessionID, data)
-	return args.Error(0)
+	if m.webauthnSessions == nil {
+		m.webauthnSessions = make(map[string][]byte)
+	}
+	m.webauthnSessions[sessionID] = data
+	return nil
 }
 
 func (m *mockSessionStore) DeleteWebAuthnSession(ctx context.Context, sessionID string) error {
-	args := m.Called(ctx, sessionID)
-	return args.Error(0)
+	if m.webauthnSessions != nil {
+		delete(m.webauthnSessions, sessionID)
+	}
+	return nil
 }
 
 func (m *mockSessionStore) GetWebAuthnSession(ctx context.Context, sessionID string) ([]byte, error) {
-	args := m.Called(ctx, sessionID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
+	if data, exists := m.webauthnSessions[sessionID]; exists {
+		return data, nil
 	}
-	return args.Get(0).([]byte), args.Error(1)
+	return nil, repository.ErrSessionNotFound
 }
 
 type mockChallengeManager struct {

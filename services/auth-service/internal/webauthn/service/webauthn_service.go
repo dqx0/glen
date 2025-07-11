@@ -367,13 +367,13 @@ func (s *webAuthnService) BeginRegistration(ctx context.Context, req *Registrati
 
 	// Convert creation options to our models
 	creationOptions := &models.PublicKeyCredentialCreationOptions{
-		Challenge: creation.Response.Challenge,
+		Challenge: []byte(creation.Response.Challenge),
 		RP: &models.RelyingPartyEntity{
 			ID:   creation.Response.RelyingParty.ID,
 			Name: creation.Response.RelyingParty.Name,
 		},
 		User: &models.UserEntity{
-			ID:          creation.Response.User.ID.([]byte),
+			ID:          []byte(creation.Response.User.ID.(protocol.URLEncodedBase64)),
 			Name:        creation.Response.User.Name,
 			DisplayName: creation.Response.User.DisplayName,
 		},
@@ -602,7 +602,12 @@ func (s *webAuthnService) BeginAuthentication(ctx context.Context, req *Authenti
 
 	userID := req.UserID
 	if userID == "" && req.UserIdentifier != "" {
-		userID = req.UserIdentifier
+		// Look up user by username/identifier to get the actual user ID
+		userInfo, err := s.userService.GetUserByUsername(ctx, req.UserIdentifier)
+		if err != nil {
+			return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get user by identifier", "", err)
+		}
+		userID = userInfo.ID
 	}
 
 	if userID == "" {
@@ -728,7 +733,7 @@ func (s *webAuthnService) BeginAuthentication(ctx context.Context, req *Authenti
 	}
 
 	requestOptions := &models.PublicKeyCredentialRequestOptions{
-		Challenge:        assertion.Response.Challenge,
+		Challenge:        []byte(assertion.Response.Challenge),
 		RPID:             assertion.Response.RelyingPartyID,
 		AllowCredentials: allowCredentials,
 		UserVerification: models.UserVerificationRequirement(assertion.Response.UserVerification),

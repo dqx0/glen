@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -12,6 +13,7 @@ import (
 type UserService interface {
 	GetUserByID(ctx context.Context, userID string) (*UserInfo, error)
 	GetUserByUsername(ctx context.Context, username string) (*UserInfo, error)
+	CreateUser(ctx context.Context, username, email string) (*UserInfo, error)
 }
 
 // UserInfo represents basic user information
@@ -112,16 +114,41 @@ func (m *MockUserService) GetUserByID(ctx context.Context, userID string) (*User
 
 // GetUserByUsername returns a user by username
 func (m *MockUserService) GetUserByUsername(ctx context.Context, username string) (*UserInfo, error) {
+	fmt.Printf("[DEBUG] MockUserService: Looking up user: %s\n", username)
 	for _, user := range m.users {
 		if user.Username == username {
+			fmt.Printf("[DEBUG] MockUserService: Found user: %+v\n", user)
 			return user, nil
 		}
 	}
+	fmt.Printf("[DEBUG] MockUserService: User not found: %s\n", username)
 	return nil, fmt.Errorf("user not found: %s", username)
+}
+
+// CreateUser creates a new mock user
+func (m *MockUserService) CreateUser(ctx context.Context, username, email string) (*UserInfo, error) {
+	// Check if user already exists
+	for _, user := range m.users {
+		if user.Username == username {
+			return nil, fmt.Errorf("user already exists: %s", username)
+		}
+	}
+	
+	// Create new user
+	newUser := &UserInfo{
+		ID:          fmt.Sprintf("auto-%d", len(m.users)+1000),
+		Username:    username,
+		DisplayName: username,
+		Email:       email,
+	}
+	
+	m.AddUser(newUser)
+	return newUser, nil
 }
 
 // CreateDefaultMockUsers creates some default users for testing
 func CreateDefaultMockUsers() *MockUserService {
+	fmt.Printf("[INIT] Creating MockUserService with default test users\n")
 	mockService := NewMockUserService()
 	
 	// Add some default test users
@@ -139,7 +166,76 @@ func CreateDefaultMockUsers() *MockUserService {
 		Email:       "admin@example.com",
 	})
 	
+	fmt.Printf("[INIT] MockUserService created with users: testuser, admin\n")
 	return mockService
+}
+
+// DatabaseUserService provides user lookup from the database
+type DatabaseUserService struct {
+	db *sql.DB
+}
+
+// NewDatabaseUserService creates a new database user service
+func NewDatabaseUserService(db *sql.DB) *DatabaseUserService {
+	fmt.Printf("[INIT] Creating DatabaseUserService with database connection\n")
+	return &DatabaseUserService{db: db}
+}
+
+// GetUserByID looks up a user by their ID
+func (d *DatabaseUserService) GetUserByID(ctx context.Context, userID string) (*UserInfo, error) {
+	var user UserInfo
+	query := `SELECT id, username, COALESCE(email, '') as email, username as display_name 
+	          FROM users WHERE id = $1 AND status = 'active'`
+	
+	err := d.db.QueryRowContext(ctx, query, userID).Scan(
+		&user.ID, &user.Username, &user.Email, &user.DisplayName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found: %s", userID)
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	
+	return &user, nil
+}
+
+// GetUserByUsername looks up a user by their username
+func (d *DatabaseUserService) GetUserByUsername(ctx context.Context, username string) (*UserInfo, error) {
+	var user UserInfo
+	query := `SELECT id, username, COALESCE(email, '') as email, username as display_name 
+	          FROM users WHERE username = $1 AND status = 'active'`
+	
+	fmt.Printf("[DEBUG] Looking up user: %s with query: %s\n", username, query)
+	
+	err := d.db.QueryRowContext(ctx, query, username).Scan(
+		&user.ID, &user.Username, &user.Email, &user.DisplayName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Printf("[DEBUG] User not found: %s\n", username)
+			return nil, fmt.Errorf("user not found: %s", username)
+		}
+		fmt.Printf("[DEBUG] Database error for user %s: %v\n", username, err)
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	
+	fmt.Printf("[DEBUG] Found user: %+v\n", user)
+	return &user, nil
+}
+
+// CreateUser creates a new user account
+func (d *DatabaseUserService) CreateUser(ctx context.Context, username, email string) (*UserInfo, error) {
+	query := `INSERT INTO users (username, email, email_verified, status, created_at, updated_at) 
+	          VALUES ($1, $2, true, 'active', NOW(), NOW()) 
+	          RETURNING id, username, COALESCE(email, '') as email, username as display_name`
+	
+	var user UserInfo
+	err := d.db.QueryRowContext(ctx, query, username, email).Scan(
+		&user.ID, &user.Username, &user.Email, &user.DisplayName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+	
+	return &user, nil
 }
 
 // UserCredentialManager manages the relationship between users and their credentials

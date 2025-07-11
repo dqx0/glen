@@ -136,6 +136,7 @@ func GetWebAuthnCredentialsSchema() string {
 			backup_state BOOLEAN NOT NULL DEFAULT 0,
 			sign_count INTEGER NOT NULL DEFAULT 0,
 			clone_warning BOOLEAN NOT NULL DEFAULT 0,
+			name TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -210,6 +211,12 @@ func GetWebAuthnMigrations() []Migration {
 			Name:    "Create WebAuthn indexes",
 			UpSQL:   createIndexesSQL(),
 			DownSQL: dropIndexesSQL(),
+		},
+		{
+			Version: "004_add_credential_name",
+			Name:    "Add name column to webauthn_credentials",
+			UpSQL:   "ALTER TABLE webauthn_credentials ADD COLUMN name TEXT NOT NULL DEFAULT '';",
+			DownSQL: "ALTER TABLE webauthn_credentials DROP COLUMN name;",
 		},
 	}
 }

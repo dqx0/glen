@@ -74,8 +74,10 @@ type WebAuthnCredential struct {
 	Flags           AuthenticatorFlags       `json:"flags" db:"flags"`
 	SignCount       uint32                    `json:"sign_count" db:"sign_count"`
 	CloneWarning    bool                      `json:"clone_warning" db:"clone_warning"`
+	Name            string                    `json:"name" db:"name"`
 	CreatedAt       time.Time                 `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time                 `json:"updated_at" db:"updated_at"`
+	LastUsedAt      *time.Time                `json:"last_used_at,omitempty" db:"last_used_at"`
 }
 
 // Validate validates the WebAuthnCredential

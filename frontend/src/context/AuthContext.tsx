@@ -118,11 +118,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
   };
 
+  const refreshUser = async () => {
+    await loadUserData();
+  };
+
   const value: UserContextType = {
     user,
     login,
     register,
     logout,
+    refreshUser,
     loading,
     error,
   };

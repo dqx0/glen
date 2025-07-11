@@ -3,12 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 
 	"github.com/dqx0/glen/auth-service/internal/webauthn/service"
+	"github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
 )
 
 // RegistrationHandler handles WebAuthn registration endpoints
@@ -28,6 +30,11 @@ func NewRegistrationHandler(webAuthnService service.WebAuthnService) *Registrati
 // RegisterRoutes registers the registration routes
 func (h *RegistrationHandler) RegisterRoutes(r chi.Router) {
 	r.Route("/webauthn/register", func(r chi.Router) {
+		// Apply development mode middleware if we're in development
+		env := os.Getenv("ENVIRONMENT")
+		if env == "development" || env == "dev" || env == "" {
+			r.Use(middleware.DevModeMiddleware)
+		}
 		r.Post("/start", h.StartRegistration)
 		r.Post("/finish", h.FinishRegistration)
 	})
@@ -70,9 +77,9 @@ func (h *RegistrationHandler) StartRegistration(w http.ResponseWriter, r *http.R
 
 	// Convert to base64 format for client compatibility
 	base64Response := map[string]interface{}{
-		"sessionId": response.SessionID,
-		"options":   convertCreationOptionsToBase64(response.CreationOptions),
-		"expiresAt": response.ExpiresAt.Format(time.RFC3339),
+		"session_id": response.SessionID,
+		"options":    convertCreationOptionsToBase64(response.CreationOptions),
+		"expires_at": response.ExpiresAt.Format(time.RFC3339),
 	}
 
 	// Write success response

@@ -6,6 +6,7 @@ import { AuthService } from '../services/authService';
 import { UserService } from '../services/userService';
 import WebAuthnLoginButton from './WebAuthnLoginButton';
 import type { AuthenticationFinishResponse } from '../types/webauthn';
+import type { User } from '../types/user';
 
 interface WebAuthnSectionProps {
   username: string;
@@ -21,7 +22,7 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
   const [isSupported, setIsSupported] = useState(false);
   const [isPlatformSupported, setIsPlatformSupported] = useState(false);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
 
   useEffect(() => {
     checkWebAuthnSupport();
@@ -39,22 +40,29 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
 
   const handleWebAuthnSuccess = async (response: AuthenticationFinishResponse) => {
     try {
-      // ユーザー情報とトークンを保存（WebAuthn認証は既にJWTトークンを含む）
-      UserService.storeUser(response.user);
-      
+      if (!response.user_id) {
+        throw new Error('User ID not found in authentication response');
+      }
+
       // WebAuthn認証レスポンスに基づいてJWTトークンを発行
+      // Note: The response now only contains user_id, not complete user info
       const authResponse = await AuthService.login({
-        user_id: response.user.id,
-        username: response.user.username,
+        user_id: response.user_id,
+        username: 'webauthn-user', // Temporary placeholder
         session_name: 'webauthn-session',
         scopes: ['read', 'write'],
       });
 
       AuthService.storeTokens(authResponse);
-      localStorage.setItem('username', response.user.username);
+      localStorage.setItem('user_id', response.user_id);
 
-      // ダッシュボードにリダイレクト
-      navigate('/dashboard');
+      // Note: ユーザー情報の更新は次回ページ読み込み時にAuthContextの初期化で処理される
+      // 今はトークンが保存されているので、ダッシュボードに直接遷移
+
+      // 少し待ってからダッシュボードにリダイレクト（状態の更新を待つ）
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 100);
       
     } catch (error: any) {
       console.error('Post-WebAuthn authentication failed:', error);

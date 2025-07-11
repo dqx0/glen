@@ -73,9 +73,9 @@ func (h *AuthenticationHandler) StartAuthentication(w http.ResponseWriter, r *ht
 
 	// Convert to base64 format for client compatibility
 	base64Response := map[string]interface{}{
-		"sessionId": response.SessionID,
-		"options":   convertRequestOptionsToBase64(response.RequestOptions),
-		"expiresAt": response.ExpiresAt.Format(time.RFC3339),
+		"session_id": response.SessionID,
+		"options":    convertRequestOptionsToBase64(response.RequestOptions),
+		"expires_at": response.ExpiresAt.Format(time.RFC3339),
 	}
 
 	// Write success response

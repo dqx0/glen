@@ -12,6 +12,23 @@ import (
 	"github.com/dqx0/glen/auth-service/internal/webauthn/service"
 )
 
+// decodeURLSafeBase64 decodes URL-safe base64 strings (without padding)
+func decodeURLSafeBase64(encoded string) ([]byte, error) {
+	// Add padding if needed
+	switch len(encoded) % 4 {
+	case 2:
+		encoded += "=="
+	case 3:
+		encoded += "="
+	}
+	
+	// Convert URL-safe characters back to standard base64
+	encoded = strings.ReplaceAll(encoded, "-", "+")
+	encoded = strings.ReplaceAll(encoded, "_", "/")
+	
+	return base64.StdEncoding.DecodeString(encoded)
+}
+
 // Base64CredentialCreationOptions converts binary data to base64 for JSON response
 type Base64CredentialCreationOptions struct {
 	Challenge              string                               `json:"challenge"`
@@ -127,7 +144,7 @@ func parseAttestationResponse(data map[string]interface{}) (*models.Authenticato
 
 	// Parse RawID
 	if rawID, ok := data["rawId"].(string); ok {
-		decoded, err := base64.URLEncoding.DecodeString(rawID)
+		decoded, err := decodeURLSafeBase64(rawID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid rawId base64: %w", err)
 		}
@@ -149,7 +166,7 @@ func parseAttestationResponse(data map[string]interface{}) (*models.Authenticato
 
 		// Parse ClientDataJSON
 		if clientDataJSON, ok := respData["clientDataJSON"].(string); ok {
-			decoded, err := base64.URLEncoding.DecodeString(clientDataJSON)
+			decoded, err := decodeURLSafeBase64(clientDataJSON)
 			if err != nil {
 				return nil, fmt.Errorf("invalid clientDataJSON base64: %w", err)
 			}
@@ -160,7 +177,7 @@ func parseAttestationResponse(data map[string]interface{}) (*models.Authenticato
 
 		// Parse AttestationObject
 		if attestationObject, ok := respData["attestationObject"].(string); ok {
-			decoded, err := base64.URLEncoding.DecodeString(attestationObject)
+			decoded, err := decodeURLSafeBase64(attestationObject)
 			if err != nil {
 				return nil, fmt.Errorf("invalid attestationObject base64: %w", err)
 			}
@@ -198,7 +215,7 @@ func parseAssertionResponse(data map[string]interface{}) (*models.AuthenticatorA
 
 	// Parse RawID
 	if rawID, ok := data["rawId"].(string); ok {
-		decoded, err := base64.URLEncoding.DecodeString(rawID)
+		decoded, err := decodeURLSafeBase64(rawID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid rawId base64: %w", err)
 		}
@@ -220,7 +237,7 @@ func parseAssertionResponse(data map[string]interface{}) (*models.AuthenticatorA
 
 		// Parse ClientDataJSON
 		if clientDataJSON, ok := respData["clientDataJSON"].(string); ok {
-			decoded, err := base64.URLEncoding.DecodeString(clientDataJSON)
+			decoded, err := decodeURLSafeBase64(clientDataJSON)
 			if err != nil {
 				return nil, fmt.Errorf("invalid clientDataJSON base64: %w", err)
 			}
@@ -231,7 +248,7 @@ func parseAssertionResponse(data map[string]interface{}) (*models.AuthenticatorA
 
 		// Parse AuthenticatorData
 		if authenticatorData, ok := respData["authenticatorData"].(string); ok {
-			decoded, err := base64.URLEncoding.DecodeString(authenticatorData)
+			decoded, err := decodeURLSafeBase64(authenticatorData)
 			if err != nil {
 				return nil, fmt.Errorf("invalid authenticatorData base64: %w", err)
 			}
@@ -242,7 +259,7 @@ func parseAssertionResponse(data map[string]interface{}) (*models.AuthenticatorA
 
 		// Parse Signature
 		if signature, ok := respData["signature"].(string); ok {
-			decoded, err := base64.URLEncoding.DecodeString(signature)
+			decoded, err := decodeURLSafeBase64(signature)
 			if err != nil {
 				return nil, fmt.Errorf("invalid signature base64: %w", err)
 			}
@@ -253,7 +270,7 @@ func parseAssertionResponse(data map[string]interface{}) (*models.AuthenticatorA
 
 		// Parse UserHandle (optional)
 		if userHandle, ok := respData["userHandle"].(string); ok && userHandle != "" {
-			decoded, err := base64.URLEncoding.DecodeString(userHandle)
+			decoded, err := decodeURLSafeBase64(userHandle)
 			if err != nil {
 				return nil, fmt.Errorf("invalid userHandle base64: %w", err)
 			}
@@ -274,9 +291,9 @@ func parseRegistrationFinishRequest(r *http.Request) (*service.RegistrationFinis
 	}
 
 	// Parse session ID
-	sessionID, ok := data["sessionId"].(string)
+	sessionID, ok := data["session_id"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid sessionId")
+		return nil, fmt.Errorf("missing or invalid session_id")
 	}
 
 	// Parse attestation response
@@ -311,9 +328,9 @@ func parseAuthenticationFinishRequest(r *http.Request) (*service.AuthenticationF
 	}
 
 	// Parse session ID
-	sessionID, ok := data["sessionId"].(string)
+	sessionID, ok := data["session_id"].(string)
 	if !ok {
-		return nil, fmt.Errorf("missing or invalid sessionId")
+		return nil, fmt.Errorf("missing or invalid session_id")
 	}
 
 	// Parse assertion response

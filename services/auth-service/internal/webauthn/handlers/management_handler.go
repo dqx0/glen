@@ -51,6 +51,7 @@ func (h *ManagementHandler) RegisterRoutes(r chi.Router) {
 		}
 		r.Get("/", h.GetMyCredentials)                    // GET /api/v1/webauthn/credentials
 		r.Delete("/{credentialID}", h.DeleteMyCredential) // DELETE /api/v1/webauthn/credentials/{credentialID}
+		r.Put("/{credentialID}", h.UpdateMyCredential)    // PUT /api/v1/webauthn/credentials/{credentialID}
 	})
 	
 	// User-specific credential management routes - require authentication and ownership
@@ -220,6 +221,78 @@ func (h *ManagementHandler) DeleteCredential(w http.ResponseWriter, r *http.Requ
 }
 
 // UpdateCredential handles PUT /webauthn/users/{userID}/credentials/{credentialID}
+// UpdateMyCredential handles PUT /webauthn/credentials/{credentialID}
+func (h *ManagementHandler) UpdateMyCredential(w http.ResponseWriter, r *http.Request) {
+	credentialID := chi.URLParam(r, "credentialID")
+	
+	if credentialID == "" {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Credential ID is required", "")
+		return
+	}
+
+	// Get user ID from authenticated context
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		h.writeErrorResponse(w, http.StatusUnauthorized, "User not authenticated", "")
+		return
+	}
+
+	var req UpdateCredentialRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	// Validate request
+	if err := h.validator.Struct(&req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Validation failed", err.Error())
+		return
+	}
+
+	// Get the user's credentials
+	credentials, err := h.webAuthnService.GetUserCredentials(r.Context(), userID)
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+
+	// Find the credential to update by database record ID
+	var targetCredential *models.WebAuthnCredential
+	for _, cred := range credentials {
+		if cred.ID == credentialID {
+			targetCredential = cred
+			break
+		}
+	}
+
+	if targetCredential == nil {
+		h.writeErrorResponse(w, http.StatusNotFound, "Credential not found", "")
+		return
+	}
+
+	// Update allowed fields
+	if req.Name != nil {
+		targetCredential.Name = *req.Name
+	}
+	if req.CloneWarning != nil {
+		targetCredential.CloneWarning = *req.CloneWarning
+	}
+	// Add other updatable fields as needed
+
+	err = h.webAuthnService.UpdateCredential(r.Context(), targetCredential)
+	if err != nil {
+		h.handleServiceError(w, err)
+		return
+	}
+
+	response := SuccessResponse{
+		Success: true,
+		Message: "Credential updated successfully",
+	}
+
+	h.writeJSONResponse(w, http.StatusOK, response)
+}
+
 func (h *ManagementHandler) UpdateCredential(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	credentialID := chi.URLParam(r, "credentialID")
@@ -246,13 +319,6 @@ func (h *ManagementHandler) UpdateCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Decode base64 credential ID
-	decodedCredentialID, err := base64.URLEncoding.DecodeString(credentialID)
-	if err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid credential ID format", err.Error())
-		return
-	}
-
 	// Authentication and authorization is handled by middleware
 
 	// Get the existing credential first
@@ -262,10 +328,10 @@ func (h *ManagementHandler) UpdateCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Find the credential to update
+	// Find the credential to update by database record ID
 	var targetCredential *models.WebAuthnCredential
 	for _, cred := range credentials {
-		if string(cred.CredentialID) == string(decodedCredentialID) {
+		if cred.ID == credentialID {
 			targetCredential = cred
 			break
 		}
@@ -277,6 +343,9 @@ func (h *ManagementHandler) UpdateCredential(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Update allowed fields
+	if req.Name != nil {
+		targetCredential.Name = *req.Name
+	}
 	if req.CloneWarning != nil {
 		targetCredential.CloneWarning = *req.CloneWarning
 	}
@@ -372,7 +441,8 @@ func (h *ManagementHandler) handleServiceError(w http.ResponseWriter, err error)
 
 // UpdateCredentialRequest represents a request to update a credential
 type UpdateCredentialRequest struct {
-	CloneWarning *bool `json:"clone_warning,omitempty"`
+	Name         *string `json:"name,omitempty"`
+	CloneWarning *bool   `json:"clone_warning,omitempty"`
 	// Add other updatable fields as needed
 }
 

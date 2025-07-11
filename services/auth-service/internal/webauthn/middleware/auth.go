@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	authService "github.com/dqx0/glen/auth-service/internal/service"
 )
 
@@ -163,4 +165,56 @@ func DevModeAdminMiddleware(next http.Handler) http.Handler {
 		
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// AuthClaims represents JWT claims for WebAuthn middleware compatibility
+type AuthClaims struct {
+	UserID  string `json:"user_id"`
+	IsAdmin bool   `json:"is_admin"`
+	jwt.RegisteredClaims
+}
+
+// DefaultJWTConfig creates a default JWT configuration for testing
+func DefaultJWTConfig() *JWTConfig {
+	// This should be integrated with auth-service's JWT service in production
+	// For now, create a basic config for testing
+	return &JWTConfig{
+		jwtService: nil, // Will use direct JWT operations for testing
+	}
+}
+
+// GenerateToken generates a JWT token for testing purposes
+func GenerateToken(config *JWTConfig, userID string, isAdmin bool) (string, error) {
+	// For testing, use direct JWT operations
+	claims := AuthClaims{
+		UserID:  userID,
+		IsAdmin: isAdmin,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	secret := []byte("test-secret-key-for-webauthn-middleware")
+	return token.SignedString(secret)
+}
+
+// ValidateToken validates a JWT token for testing purposes
+func ValidateToken(config *JWTConfig, tokenString string) (*AuthClaims, error) {
+	// For testing, use direct JWT operations
+	token, err := jwt.ParseWithClaims(tokenString, &AuthClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte("test-secret-key-for-webauthn-middleware"), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*AuthClaims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, jwt.ErrInvalidKey
 }

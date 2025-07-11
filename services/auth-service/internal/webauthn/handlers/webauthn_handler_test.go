@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,12 +9,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"encoding/json"
+
+	"github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
 )
 
 func TestWebAuthnHandler_HealthCheck(t *testing.T) {
 	mockService := &mockWebAuthnService{}
-	handler := NewWebAuthnHandler(mockService)
+	handler := NewWebAuthnHandler(mockService, middleware.DefaultJWTConfig())
 	
 	req := httptest.NewRequest("GET", "/webauthn/health", nil)
 	rr := httptest.NewRecorder()
@@ -33,7 +35,7 @@ func TestWebAuthnHandler_HealthCheck(t *testing.T) {
 
 func TestWebAuthnHandler_RegisterRoutes(t *testing.T) {
 	mockService := &mockWebAuthnService{}
-	handler := NewWebAuthnHandler(mockService)
+	handler := NewWebAuthnHandler(mockService, middleware.DefaultJWTConfig())
 	
 	r := chi.NewRouter()
 	handler.RegisterRoutes(r)
@@ -57,7 +59,7 @@ func TestWebAuthnHandler_RegisterRoutes(t *testing.T) {
 
 func TestWebAuthnHandler_CORS(t *testing.T) {
 	mockService := &mockWebAuthnService{}
-	handler := NewWebAuthnHandler(mockService)
+	handler := NewWebAuthnHandler(mockService, middleware.DefaultJWTConfig())
 	
 	r := chi.NewRouter()
 	handler.RegisterRoutes(r)
@@ -76,7 +78,7 @@ func TestWebAuthnHandler_CORS(t *testing.T) {
 
 func TestWebAuthnHandler_ContentType(t *testing.T) {
 	mockService := &mockWebAuthnService{}
-	handler := NewWebAuthnHandler(mockService)
+	handler := NewWebAuthnHandler(mockService, middleware.DefaultJWTConfig())
 	
 	r := chi.NewRouter()
 	handler.RegisterRoutes(r)

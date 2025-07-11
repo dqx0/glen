@@ -56,8 +56,10 @@ func NewWebAuthnModule(db *sqlx.DB, redisClient *redis.Client, cfg *config.WebAu
 	credRepo := repository.NewPostgreSQLWebAuthnRepository(db, repoConfig)
 	sessionStore := repository.NewRedisSessionStore(redisClient, repoConfig)
 
-	// Initialize service layer
-	webAuthnService, err := service.NewWebAuthnServiceFromConfig(credRepo, sessionStore, cfg)
+	// Initialize service layer with database user service
+	databaseUserService := service.NewDatabaseUserService(db.DB)
+	fmt.Printf("[INIT] Using DatabaseUserService for user lookups\n")
+	webAuthnService, err := service.NewWebAuthnServiceWithUserService(credRepo, sessionStore, cfg, databaseUserService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create WebAuthn service: %w", err)
 	}

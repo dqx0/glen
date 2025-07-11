@@ -16,6 +16,7 @@ func GetWebAuthnCredentialsSchemaPostgreSQL() string {
 			backup_state BOOLEAN NOT NULL DEFAULT FALSE,
 			sign_count INTEGER NOT NULL DEFAULT 0,
 			clone_warning BOOLEAN NOT NULL DEFAULT FALSE,
+			name VARCHAR(255) NOT NULL DEFAULT '',
 			created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
 			updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
 			CONSTRAINT fk_webauthn_credentials_user_id 

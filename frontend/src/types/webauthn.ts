@@ -28,39 +28,41 @@ export interface RegistrationStartRequest {
 }
 
 export interface RegistrationStartResponse {
-  challenge: string;
-  user_id: string;
-  timeout: number;
-  rp: {
-    name: string;
-    id: string;
+  session_id: string;
+  expires_at: string;
+  options: {
+    challenge: string;
+    rp: {
+      name: string;
+      id: string;
+    };
+    user: {
+      id: string;
+      name: string;
+      displayName: string;
+    };
+    pubKeyCredParams: {
+      type: 'public-key';
+      alg: number;
+    }[];
+    timeout?: number;
+    authenticatorSelection?: {
+      authenticatorAttachment?: 'platform' | 'cross-platform';
+      userVerification?: 'required' | 'preferred' | 'discouraged';
+      requireResidentKey?: boolean;
+    };
+    attestation?: 'none' | 'indirect' | 'direct';
+    excludeCredentials?: {
+      type: 'public-key';
+      id: string;
+      transports?: string[];
+    }[];
   };
-  user: {
-    id: string;
-    name: string;
-    displayName: string;
-  };
-  pubKeyCredParams: {
-    type: 'public-key';
-    alg: number;
-  }[];
-  authenticatorSelection?: {
-    authenticatorAttachment?: 'platform' | 'cross-platform';
-    userVerification?: 'required' | 'preferred' | 'discouraged';
-    requireResidentKey?: boolean;
-  };
-  attestation?: 'none' | 'indirect' | 'direct';
-  excludeCredentials?: {
-    type: 'public-key';
-    id: string;
-    transports?: string[];
-  }[];
 }
 
 export interface RegistrationFinishRequest {
-  user_id: string;
-  credential_name: string;
-  credential: {
+  session_id: string;
+  response: {
     id: string;
     rawId: string;
     type: 'public-key';
@@ -69,34 +71,41 @@ export interface RegistrationFinishRequest {
       clientDataJSON: string;
     };
   };
+  client_extensions?: Record<string, any>;
 }
 
 export interface RegistrationFinishResponse {
-  credential: WebAuthnCredential;
-  verified: boolean;
+  success: boolean;
+  credentialId: string;
+  warnings?: string[];
+  timestamp: number;
 }
 
 // 認証関連
 export interface AuthenticationStartRequest {
-  username?: string;
+  user_identifier?: string;
   user_verification?: 'required' | 'preferred' | 'discouraged';
 }
 
 export interface AuthenticationStartResponse {
-  challenge: string;
-  timeout: number;
-  rp_id: string;
-  user_verification?: 'required' | 'preferred' | 'discouraged';
-  allowCredentials?: {
-    type: 'public-key';
-    id: string;
-    transports?: string[];
-  }[];
+  session_id: string;
+  expires_at: string;
+  options: {
+    challenge: string;
+    timeout?: number;
+    rpId: string;
+    userVerification?: 'required' | 'preferred' | 'discouraged';
+    allowCredentials?: {
+      type: 'public-key';
+      id: string;
+      transports?: string[];
+    }[];
+  };
 }
 
 export interface AuthenticationFinishRequest {
-  username: string;
-  credential: {
+  session_id: string;
+  response: {
     id: string;
     rawId: string;
     type: 'public-key';
@@ -107,18 +116,16 @@ export interface AuthenticationFinishRequest {
       userHandle?: string;
     };
   };
+  client_extensions?: Record<string, any>;
 }
 
 export interface AuthenticationFinishResponse {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    created_at: string;
-    updated_at: string;
-  };
-  credential: WebAuthnCredential;
-  verified: boolean;
+  success: boolean;
+  user_id?: string;
+  credential_id?: string;
+  sign_count?: number;
+  authentication_time?: string;
+  warnings?: string[];
 }
 
 // ブラウザAPI関連
