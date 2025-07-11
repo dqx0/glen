@@ -22,23 +22,38 @@ const SocialAccountsSection: React.FC = () => {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // 並行して実行
+      // 並行して実行 - より堅牢なエラーハンドリング
       const [accountsResponse, providersResponse] = await Promise.all([
-        SocialService.getSocialAccounts().catch(() => ({ accounts: [] })),
-        SocialService.getProviders().catch(() => ({ providers: [] }))
+        SocialService.getSocialAccounts().catch((error) => {
+          console.warn('Failed to load social accounts:', error);
+          return { accounts: [] };
+        }),
+        SocialService.getProviders().catch((error) => {
+          console.warn('Failed to load social providers:', error);
+          return { providers: [] };
+        })
       ]);
 
-      setSocialAccounts(accountsResponse.accounts);
+      // 安全な配列アクセス
+      const accounts = Array.isArray(accountsResponse?.accounts) ? accountsResponse.accounts : [];
+      setSocialAccounts(accounts);
       
-      const enabledProviders = providersResponse.providers
-        .filter(p => p.enabled)
-        .map(p => p.provider);
+      // プロバイダーの安全な処理
+      const providers = Array.isArray(providersResponse?.providers) ? providersResponse.providers : [];
+      const enabledProviders = providers
+        .filter(p => p && typeof p === 'object' && p.enabled)
+        .map(p => p.provider)
+        .filter(p => p); // null/undefined を除外
       setAvailableProviders(enabledProviders);
       
     } catch (error: any) {
       console.error('Failed to load social accounts data:', error);
       setError('ソーシャルアカウント情報の読み込みに失敗しました');
+      // エラー時のフォールバック
+      setSocialAccounts([]);
+      setAvailableProviders([]);
     } finally {
       setLoading(false);
     }

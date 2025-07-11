@@ -28,9 +28,9 @@ func NewSocialAccountRepository(db *sql.DB) *SocialAccountRepository {
 func (r *SocialAccountRepository) Create(ctx context.Context, account *models.SocialAccount) error {
 	query := `
 		INSERT INTO social_accounts (
-			id, user_id, provider, provider_id, email, username, 
-			created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			id, user_id, provider, provider_id, email, display_name, 
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
@@ -41,6 +41,7 @@ func (r *SocialAccountRepository) Create(ctx context.Context, account *models.So
 		account.Email,
 		account.DisplayName,
 		account.CreatedAt,
+		account.UpdatedAt,
 	)
 
 	if err != nil {
@@ -56,7 +57,7 @@ func (r *SocialAccountRepository) Create(ctx context.Context, account *models.So
 // GetByID はIDでソーシャルアカウントを取得する
 func (r *SocialAccountRepository) GetByID(ctx context.Context, id string) (*models.SocialAccount, error) {
 	query := `
-		SELECT id, user_id, provider, provider_id, email, username, created_at
+		SELECT id, user_id, provider, provider_id, email, display_name, created_at, updated_at
 		FROM social_accounts
 		WHERE id = $1
 	`
@@ -71,6 +72,7 @@ func (r *SocialAccountRepository) GetByID(ctx context.Context, id string) (*mode
 		&account.Email,
 		&account.DisplayName,
 		&account.CreatedAt,
+		&account.UpdatedAt,
 	)
 
 	if err != nil {
@@ -86,7 +88,7 @@ func (r *SocialAccountRepository) GetByID(ctx context.Context, id string) (*mode
 // GetByUserID はユーザーIDでソーシャルアカウント一覧を取得する
 func (r *SocialAccountRepository) GetByUserID(ctx context.Context, userID string) ([]*models.SocialAccount, error) {
 	query := `
-		SELECT id, user_id, provider, provider_id, email, username, created_at
+		SELECT id, user_id, provider, provider_id, email, display_name, created_at, updated_at
 		FROM social_accounts
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -111,6 +113,7 @@ func (r *SocialAccountRepository) GetByUserID(ctx context.Context, userID string
 			&account.Email,
 			&account.DisplayName,
 			&account.CreatedAt,
+			&account.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan social account: %w", err)
@@ -129,7 +132,7 @@ func (r *SocialAccountRepository) GetByUserID(ctx context.Context, userID string
 // GetByProviderAndProviderID はプロバイダーとプロバイダーIDでソーシャルアカウントを取得する
 func (r *SocialAccountRepository) GetByProviderAndProviderID(ctx context.Context, provider, providerID string) (*models.SocialAccount, error) {
 	query := `
-		SELECT id, user_id, provider, provider_id, email, username, created_at
+		SELECT id, user_id, provider, provider_id, email, display_name, created_at, updated_at
 		FROM social_accounts
 		WHERE provider = $1 AND provider_id = $2
 	`
@@ -144,6 +147,7 @@ func (r *SocialAccountRepository) GetByProviderAndProviderID(ctx context.Context
 		&account.Email,
 		&account.DisplayName,
 		&account.CreatedAt,
+		&account.UpdatedAt,
 	)
 
 	if err != nil {
@@ -160,13 +164,14 @@ func (r *SocialAccountRepository) GetByProviderAndProviderID(ctx context.Context
 func (r *SocialAccountRepository) Update(ctx context.Context, account *models.SocialAccount) error {
 	query := `
 		UPDATE social_accounts SET
-			email = $1, username = $2
-		WHERE id = $3
+			email = $1, display_name = $2, updated_at = $3
+		WHERE id = $4
 	`
 
 	result, err := r.db.ExecContext(ctx, query,
 		account.Email,
 		account.DisplayName,
+		account.UpdatedAt,
 		account.ID,
 	)
 

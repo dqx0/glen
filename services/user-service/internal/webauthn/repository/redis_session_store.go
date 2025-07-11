@@ -398,3 +398,59 @@ func (s *redisSessionStore) GetSessionTTL(ctx context.Context, sessionID string)
 
 	return ttl, nil
 }
+
+// WebAuthn-specific session storage methods for go-webauthn library integration
+
+// StoreWebAuthnSession stores raw WebAuthn session data
+func (s *redisSessionStore) StoreWebAuthnSession(ctx context.Context, sessionID string, sessionData []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	key := "webauthn:raw:" + sessionID
+
+	// Store with default 15 minute TTL
+	ttl := 15 * time.Minute
+	err := s.client.SetEX(ctx, key, sessionData, ttl).Err()
+	if err != nil {
+		return NewRepositoryError(ErrRepositoryInternal, "Failed to store WebAuthn session", err)
+	}
+
+	return nil
+}
+
+// GetWebAuthnSession retrieves raw WebAuthn session data
+func (s *redisSessionStore) GetWebAuthnSession(ctx context.Context, sessionID string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	key := "webauthn:raw:" + sessionID
+
+	sessionData, err := s.client.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, NewRepositoryError(ErrRepositoryNotFound, "WebAuthn session not found", err)
+		}
+		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to get WebAuthn session", err)
+	}
+
+	return []byte(sessionData), nil
+}
+
+// DeleteWebAuthnSession removes raw WebAuthn session data
+func (s *redisSessionStore) DeleteWebAuthnSession(ctx context.Context, sessionID string) error {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	key := "webauthn:raw:" + sessionID
+
+	result, err := s.client.Del(ctx, key).Result()
+	if err != nil {
+		return NewRepositoryError(ErrRepositoryInternal, "Failed to delete WebAuthn session", err)
+	}
+
+	if result == 0 {
+		return NewRepositoryError(ErrRepositoryNotFound, "WebAuthn session not found", nil)
+	}
+
+	return nil
+}

@@ -35,11 +35,17 @@ const WebAuthnCredentialsSection: React.FC = () => {
 
     try {
       setLoading(true);
+      setError(null);
       const response = await WebAuthnService.getCredentials();
-      setCredentials(response.credentials);
+      
+      // 安全な配列アクセス
+      const credentials = Array.isArray(response?.credentials) ? response.credentials : [];
+      setCredentials(credentials);
     } catch (error: any) {
       console.error('Failed to load WebAuthn credentials:', error);
       setError('WebAuthn認証器の読み込みに失敗しました');
+      // エラー時のフォールバック
+      setCredentials([]);
     } finally {
       setLoading(false);
     }

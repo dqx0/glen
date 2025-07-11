@@ -37,11 +37,17 @@ const Dashboard: React.FC = () => {
 
     try {
       setLoading(true);
+      setError(null);
       const userTokens = await AuthService.listTokens(user.id);
-      setTokens(userTokens);
+      
+      // 安全な配列アクセス
+      const safeTokens = Array.isArray(userTokens) ? userTokens : [];
+      setTokens(safeTokens);
     } catch (error: unknown) {
       console.error('Failed to load tokens:', error);
       setError(getErrorMessage(error, 'トークンの読み込みに失敗しました'));
+      // エラー時のフォールバック
+      setTokens([]);
     } finally {
       setLoading(false);
     }

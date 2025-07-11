@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -38,47 +39,57 @@ func (h *RegistrationHandler) StartRegistration(w http.ResponseWriter, r *http.R
 	
 	// Parse request body
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body", err.Error())
 		return
 	}
 
+	// Sanitize user input
+	req.Username = sanitizeUserInput(req.Username)
+	req.DisplayName = sanitizeUserInput(req.DisplayName)
+
 	// Validate request
 	if err := h.validator.Struct(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Validation failed", err.Error())
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation failed", err.Error())
 		return
 	}
 
 	// Call service
 	response, err := h.webAuthnService.BeginRegistration(r.Context(), &req)
 	if err != nil {
-		h.handleServiceError(w, err)
+		handleWebAuthnServiceError(w, err)
 		return
 	}
 
+	// Convert to base64 format for client compatibility
+	base64Response := map[string]interface{}{
+		"sessionId": response.SessionID,
+		"options":   convertCreationOptionsToBase64(response.CreationOptions),
+		"expiresAt": response.ExpiresAt.Format(time.RFC3339),
+	}
+
 	// Write success response
-	h.writeJSONResponse(w, http.StatusOK, response)
+	h.writeJSONResponse(w, http.StatusOK, base64Response)
 }
 
 // FinishRegistration handles POST /webauthn/register/finish
 func (h *RegistrationHandler) FinishRegistration(w http.ResponseWriter, r *http.Request) {
-	var req service.RegistrationFinishRequest
-	
-	// Parse request body
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+	// Parse request with proper base64 handling
+	req, err := parseRegistrationFinishRequest(r)
+	if err != nil {
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request format", err.Error())
 		return
 	}
 
-	// Validate request
-	if err := h.validator.Struct(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Validation failed", err.Error())
+	// Validate request structure
+	if err := h.validator.Struct(req); err != nil {
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation failed", err.Error())
 		return
 	}
 
 	// Call service
-	result, err := h.webAuthnService.FinishRegistration(r.Context(), &req)
+	result, err := h.webAuthnService.FinishRegistration(r.Context(), req)
 	if err != nil {
-		h.handleServiceError(w, err)
+		handleWebAuthnServiceError(w, err)
 		return
 	}
 
@@ -86,15 +97,23 @@ func (h *RegistrationHandler) FinishRegistration(w http.ResponseWriter, r *http.
 	if !result.Success {
 		if result.Error != nil {
 			statusCode := result.Error.HTTPStatusCode()
-			h.writeErrorResponse(w, statusCode, result.Error.Error(), "")
+			writeWebAuthnErrorResponse(w, statusCode, string(result.Error.Type), result.Error.Message, result.Error.Details)
 			return
 		}
-		h.writeErrorResponse(w, http.StatusInternalServerError, "Registration failed", "Unknown error")
+		writeWebAuthnErrorResponse(w, http.StatusInternalServerError, "REGISTRATION_FAILED", "Registration failed", "Unknown error")
 		return
 	}
 
+	// Create enhanced response
+	response := map[string]interface{}{
+		"success":       result.Success,
+		"credentialId":  result.CredentialID,
+		"warnings":      result.Warnings,
+		"timestamp":     time.Now().Unix(),
+	}
+
 	// Write success response
-	h.writeJSONResponse(w, http.StatusOK, result)
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
 // Helper methods for response handling

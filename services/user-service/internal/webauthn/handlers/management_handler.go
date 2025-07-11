@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -39,13 +41,20 @@ func NewManagementHandlerWithJWT(webAuthnService service.WebAuthnService, jwtCon
 
 // RegisterRoutes registers the management routes with authentication
 func (h *ManagementHandler) RegisterRoutes(r chi.Router) {
-	// Credential management routes - require authentication and ownership
+	// Current user's credential management routes - require authentication
 	r.Route("/webauthn/credentials", func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(h.jwtConfig))
+		r.Get("/", h.GetMyCredentials)                    // GET /api/v1/webauthn/credentials
+		r.Delete("/{credentialID}", h.DeleteMyCredential) // DELETE /api/v1/webauthn/credentials/{credentialID}
+	})
+	
+	// User-specific credential management routes - require authentication and ownership
+	r.Route("/webauthn/users/{userID}/credentials", func(r chi.Router) {
+		r.Use(middleware.JWTMiddleware(h.jwtConfig))
 		r.Use(middleware.RequireOwnerOrAdmin("userID"))
-		r.Get("/{userID}", h.GetUserCredentials)
-		r.Delete("/{userID}/{credentialID}", h.DeleteCredential)
-		r.Put("/{userID}/{credentialID}", h.UpdateCredential)
+		r.Get("/", h.GetUserCredentials)
+		r.Delete("/{credentialID}", h.DeleteCredential)
+		r.Put("/{credentialID}", h.UpdateCredential)
 	})
 	
 	// Admin routes - require authentication and admin privileges
@@ -55,6 +64,84 @@ func (h *ManagementHandler) RegisterRoutes(r chi.Router) {
 		r.Get("/statistics", h.GetStatistics)
 		r.Post("/cleanup", h.CleanupExpiredData)
 	})
+}
+
+// GetMyCredentials handles GET /webauthn/credentials (current user's credentials)
+func (h *ManagementHandler) GetMyCredentials(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from JWT token
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		writeWebAuthnErrorResponse(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not authenticated", "")
+		return
+	}
+
+	credentials, err := h.webAuthnService.GetUserCredentials(r.Context(), userID)
+	if err != nil {
+		handleWebAuthnServiceError(w, err)
+		return
+	}
+
+	// Convert credentials to a format suitable for frontend
+	credentialList := make([]CredentialInfo, len(credentials))
+	for i, cred := range credentials {
+		credentialList[i] = CredentialInfo{
+			ID:              cred.ID,
+			CredentialID:    base64.URLEncoding.EncodeToString(cred.CredentialID),
+			AttestationType: cred.AttestationType,
+			Transport:       cred.Transport,
+			Flags:           cred.Flags,
+			SignCount:       cred.SignCount,
+			CloneWarning:    cred.CloneWarning,
+			CreatedAt:       cred.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:       cred.UpdatedAt.Format(time.RFC3339),
+		}
+	}
+
+	response := GetMyCredentialsResponse{
+		Success:     true,
+		Credentials: credentialList,
+		Count:       len(credentialList),
+		UserID:      userID,
+	}
+
+	h.writeJSONResponse(w, http.StatusOK, response)
+}
+
+// DeleteMyCredential handles DELETE /webauthn/credentials/{credentialID} (current user's credential)
+func (h *ManagementHandler) DeleteMyCredential(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from JWT token
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		writeWebAuthnErrorResponse(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not authenticated", "")
+		return
+	}
+
+	credentialID := chi.URLParam(r, "credentialID")
+	if credentialID == "" {
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Credential ID is required", "")
+		return
+	}
+
+	// Decode base64 credential ID
+	decodedCredentialID, err := base64.URLEncoding.DecodeString(credentialID)
+	if err != nil {
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid credential ID format", err.Error())
+		return
+	}
+
+	err = h.webAuthnService.DeleteCredential(r.Context(), userID, decodedCredentialID)
+	if err != nil {
+		handleWebAuthnServiceError(w, err)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"message":   "Credential deleted successfully",
+		"timestamp": time.Now().Unix(),
+	}
+
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
 // GetUserCredentials handles GET /webauthn/credentials/{userID}
@@ -82,7 +169,7 @@ func (h *ManagementHandler) GetUserCredentials(w http.ResponseWriter, r *http.Re
 	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
-// DeleteCredential handles DELETE /webauthn/credentials/{userID}/{credentialID}
+// DeleteCredential handles DELETE /webauthn/users/{userID}/credentials/{credentialID}
 func (h *ManagementHandler) DeleteCredential(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	credentialID := chi.URLParam(r, "credentialID")
@@ -97,9 +184,15 @@ func (h *ManagementHandler) DeleteCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Authentication and authorization is handled by middleware
+	// Decode base64 credential ID
+	decodedCredentialID, err := base64.URLEncoding.DecodeString(credentialID)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid credential ID format", err.Error())
+		return
+	}
 
-	err := h.webAuthnService.DeleteCredential(r.Context(), userID, []byte(credentialID))
+	// Authentication and authorization is handled by middleware
+	err = h.webAuthnService.DeleteCredential(r.Context(), userID, decodedCredentialID)
 	if err != nil {
 		h.handleServiceError(w, err)
 		return
@@ -113,7 +206,7 @@ func (h *ManagementHandler) DeleteCredential(w http.ResponseWriter, r *http.Requ
 	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
-// UpdateCredential handles PUT /webauthn/credentials/{userID}/{credentialID}
+// UpdateCredential handles PUT /webauthn/users/{userID}/credentials/{credentialID}
 func (h *ManagementHandler) UpdateCredential(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	credentialID := chi.URLParam(r, "credentialID")
@@ -140,6 +233,13 @@ func (h *ManagementHandler) UpdateCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Decode base64 credential ID
+	decodedCredentialID, err := base64.URLEncoding.DecodeString(credentialID)
+	if err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid credential ID format", err.Error())
+		return
+	}
+
 	// Authentication and authorization is handled by middleware
 
 	// Get the existing credential first
@@ -152,7 +252,7 @@ func (h *ManagementHandler) UpdateCredential(w http.ResponseWriter, r *http.Requ
 	// Find the credential to update
 	var targetCredential *models.WebAuthnCredential
 	for _, cred := range credentials {
-		if string(cred.CredentialID) == credentialID {
+		if string(cred.CredentialID) == string(decodedCredentialID) {
 			targetCredential = cred
 			break
 		}
@@ -261,6 +361,27 @@ func (h *ManagementHandler) handleServiceError(w http.ResponseWriter, err error)
 type UpdateCredentialRequest struct {
 	CloneWarning *bool `json:"clone_warning,omitempty"`
 	// Add other updatable fields as needed
+}
+
+// CredentialInfo represents credential information for frontend
+type CredentialInfo struct {
+	ID              string                            `json:"id"`
+	CredentialID    string                            `json:"credential_id"` // base64 encoded
+	AttestationType string                            `json:"attestation_type"`
+	Transport       []models.AuthenticatorTransport  `json:"transport"`
+	Flags           models.AuthenticatorFlags        `json:"flags"`
+	SignCount       uint32                            `json:"sign_count"`
+	CloneWarning    bool                              `json:"clone_warning"`
+	CreatedAt       string                            `json:"created_at"`
+	UpdatedAt       string                            `json:"updated_at"`
+}
+
+// GetMyCredentialsResponse represents the response for getting current user's credentials
+type GetMyCredentialsResponse struct {
+	Success     bool             `json:"success"`
+	Credentials []CredentialInfo `json:"credentials"`
+	Count       int              `json:"count"`
+	UserID      string           `json:"user_id"`
 }
 
 // GetCredentialsResponse represents the response for getting user credentials

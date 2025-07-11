@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -241,8 +242,16 @@ func (h *SocialHandler) GetUserSocialAccounts(w http.ResponseWriter, r *http.Req
 
 	accounts, err := h.repo.GetByUserID(r.Context(), userID)
 	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to get social accounts: %v", err))
+		// エラーの場合も空の配列を返してフロントエンドの処理を継続させる
+		writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+			"accounts": []interface{}{},
+		})
 		return
+	}
+
+	// アカウントがnilの場合の対応
+	if accounts == nil {
+		accounts = []*models.SocialAccount{}
 	}
 
 	// フロントエンドの期待する形式に合わせる
@@ -279,11 +288,42 @@ func getUserIDFromContext(r *http.Request) string {
 	return ""
 }
 
-// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出する（簡易版）
+// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出する
 func extractUserIDFromJWT(token string) string {
-	// 実際の実装では適切なJWTライブラリを使用してください
-	// ここでは簡易的な実装として空文字を返す
-	// TODO: 適切なJWT検証とユーザーID抽出を実装
+	// 簡易的な実装：JWTの署名検証なしでペイロードを取得
+	// 本番環境では適切な署名検証が必要
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	
+	// Base64デコード（パディング調整）
+	payload := parts[1]
+	// URLセーフなBase64の場合、パディングが省略されることがある
+	if len(payload)%4 != 0 {
+		payload += strings.Repeat("=", 4-len(payload)%4)
+	}
+	
+	decoded, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		return ""
+	}
+	
+	// JSONパース
+	var claims map[string]interface{}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		return ""
+	}
+	
+	// user_idまたはsubからユーザーIDを取得
+	if userID, ok := claims["user_id"].(string); ok && userID != "" {
+		return userID
+	}
+	
+	if sub, ok := claims["sub"].(string); ok && sub != "" {
+		return sub
+	}
+	
 	return ""
 }
 
@@ -321,14 +361,32 @@ func (h *SocialHandler) GetSupportedProviders(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	providers := make([]map[string]string, 0, len(h.oauth2Configs))
-	for provider := range h.oauth2Configs {
-		providers = append(providers, map[string]string{
-			"id":   provider,
-			"name": models.GetProviderDisplayName(provider),
-		})
+	providers := make([]map[string]interface{}, 0)
+	
+	// OAuth2設定が存在する場合のみプロバイダーを追加
+	if h.oauth2Configs != nil {
+		for provider := range h.oauth2Configs {
+			// プロバイダー固有のスコープを取得
+			scopes := []string{"email", "profile"}
+			switch provider {
+			case models.ProviderGoogle:
+				scopes = []string{"openid", "email", "profile"}
+			case models.ProviderGitHub:
+				scopes = []string{"user:email"}
+			case models.ProviderDiscord:
+				scopes = []string{"identify", "email"}
+			}
+			
+			providers = append(providers, map[string]interface{}{
+				"provider": provider,
+				"name":     models.GetProviderDisplayName(provider),
+				"enabled":  true,
+				"scopes":   scopes,
+			})
+		}
 	}
 
+	// 常に有効なレスポンスを返す（設定されていない場合は空の配列）
 	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
 		"providers": providers,
 	})

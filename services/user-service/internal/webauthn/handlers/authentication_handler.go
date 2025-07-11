@@ -51,66 +51,74 @@ func (h *AuthenticationHandler) StartAuthentication(w http.ResponseWriter, r *ht
 	
 	// Parse request body
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body", err.Error())
 		return
 	}
 
+	// Sanitize user input
+	req.UserIdentifier = sanitizeUserInput(req.UserIdentifier)
+
 	// Validate request
 	if err := h.validator.Struct(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Validation failed", err.Error())
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation failed", err.Error())
 		return
 	}
 
 	// Call service
 	response, err := h.webAuthnService.BeginAuthentication(r.Context(), &req)
 	if err != nil {
-		h.handleServiceError(w, err)
+		handleWebAuthnServiceError(w, err)
 		return
 	}
 
+	// Convert to base64 format for client compatibility
+	base64Response := map[string]interface{}{
+		"sessionId": response.SessionID,
+		"options":   convertRequestOptionsToBase64(response.RequestOptions),
+		"expiresAt": response.ExpiresAt.Format(time.RFC3339),
+	}
+
 	// Write success response
-	h.writeJSONResponse(w, http.StatusOK, response)
+	h.writeJSONResponse(w, http.StatusOK, base64Response)
 }
 
 // FinishAuthentication handles POST /webauthn/authenticate/finish
 func (h *AuthenticationHandler) FinishAuthentication(w http.ResponseWriter, r *http.Request) {
-	var req service.AuthenticationFinishRequest
-	
-	// Parse request body
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+	// Parse request with proper base64 handling
+	req, err := parseAuthenticationFinishRequest(r)
+	if err != nil {
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request format", err.Error())
 		return
 	}
 
-	// Validate request
-	if err := h.validator.Struct(&req); err != nil {
-		h.writeErrorResponse(w, http.StatusBadRequest, "Validation failed", err.Error())
+	// Validate request structure
+	if err := h.validator.Struct(req); err != nil {
+		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation failed", err.Error())
 		return
 	}
 
 	// Call service
-	result, err := h.webAuthnService.FinishAuthentication(r.Context(), &req)
+	result, err := h.webAuthnService.FinishAuthentication(r.Context(), req)
 	if err != nil {
-		h.handleServiceError(w, err)
+		handleWebAuthnServiceError(w, err)
 		return
 	}
 
 	// Check if authentication was successful
 	if !result.Success {
 		if result.Error != nil {
-			statusCode := http.StatusUnauthorized // Authentication failures are typically 401
-			statusCode = result.Error.HTTPStatusCode()
-			h.writeErrorResponse(w, statusCode, result.Error.Error(), "")
+			statusCode := result.Error.HTTPStatusCode()
+			writeWebAuthnErrorResponse(w, statusCode, string(result.Error.Type), result.Error.Message, result.Error.Details)
 			return
 		}
-		h.writeErrorResponse(w, http.StatusUnauthorized, "Authentication failed", "Unknown error")
+		writeWebAuthnErrorResponse(w, http.StatusUnauthorized, "AUTHENTICATION_FAILED", "Authentication failed", "Unknown error")
 		return
 	}
 
 	// Generate JWT token for successful authentication
 	token, err := middleware.GenerateToken(h.jwtConfig, result.UserID, false) // Assume regular user, not admin
 	if err != nil {
-		h.writeErrorResponse(w, http.StatusInternalServerError, "Failed to generate token", err.Error())
+		writeWebAuthnErrorResponse(w, http.StatusInternalServerError, "TOKEN_GENERATION_FAILED", "Failed to generate token", err.Error())
 		return
 	}
 
@@ -121,6 +129,8 @@ func (h *AuthenticationHandler) FinishAuthentication(w http.ResponseWriter, r *h
 		AuthenticationTime: result.AuthenticationTime.Format(time.RFC3339),
 		Warnings:           result.Warnings,
 		Token:              token,
+		SignCount:          result.SignCount,
+		Timestamp:          time.Now().Unix(),
 	}
 
 	// Write success response
@@ -174,5 +184,7 @@ type AuthenticationSuccessResponse struct {
 	AuthenticationTime string   `json:"authentication_time"`
 	Warnings           []string `json:"warnings,omitempty"`
 	Token              string   `json:"token,omitempty"` // JWT token for session management
+	SignCount          uint32   `json:"sign_count,omitempty"`
+	Timestamp          int64    `json:"timestamp"`
 }
 

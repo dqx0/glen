@@ -45,6 +45,11 @@ type SessionStore interface {
 	// Session validation
 	ValidateSessionExists(ctx context.Context, sessionID string, userID string) (bool, error)
 	ExtendSessionExpiry(ctx context.Context, sessionID string, newExpiry time.Time) error
+	
+	// WebAuthn-specific session storage for go-webauthn library
+	StoreWebAuthnSession(ctx context.Context, sessionID string, sessionData []byte) error
+	GetWebAuthnSession(ctx context.Context, sessionID string) ([]byte, error)
+	DeleteWebAuthnSession(ctx context.Context, sessionID string) error
 }
 
 // CredentialStatistics represents statistics about stored credentials

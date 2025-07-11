@@ -134,6 +134,24 @@ func (m *mockSessionStore) ExtendSessionExpiry(ctx context.Context, sessionID st
 	return args.Error(0)
 }
 
+func (m *mockSessionStore) StoreWebAuthnSession(ctx context.Context, sessionID string, data []byte) error {
+	args := m.Called(ctx, sessionID, data)
+	return args.Error(0)
+}
+
+func (m *mockSessionStore) DeleteWebAuthnSession(ctx context.Context, sessionID string) error {
+	args := m.Called(ctx, sessionID)
+	return args.Error(0)
+}
+
+func (m *mockSessionStore) GetWebAuthnSession(ctx context.Context, sessionID string) ([]byte, error) {
+	args := m.Called(ctx, sessionID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]byte), args.Error(1)
+}
+
 type mockChallengeManager struct {
 	mock.Mock
 }

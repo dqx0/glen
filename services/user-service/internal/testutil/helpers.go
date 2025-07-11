@@ -16,40 +16,18 @@ import (
 
 // TestEnvironment provides a complete test environment with database and Redis
 type TestEnvironment struct {
-	PostgresContainer testcontainers.Container
-	RedisContainer    testcontainers.Container
 	DB               *sql.DB
 	RedisClient      interface{} // Will be replaced with actual Redis client
 	Context          context.Context
 	cleanup          func()
 }
 
-// NewTestEnvironment creates a new test environment
+// NewTestEnvironment creates a new test environment using SQLite for testing
 func NewTestEnvironment(t *testing.T) *TestEnvironment {
 	ctx := context.Background()
 
-	// Start PostgreSQL container
-	postgresContainer, err := postgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:15-alpine"),
-		postgres.WithDatabase("glen_test"),
-		postgres.WithUsername("glen_test"),
-		postgres.WithPassword("glen_test"),
-		testcontainers.WithWaitStrategy(wait.ForLog("database system is ready to accept connections")),
-	)
-	require.NoError(t, err)
-
-	// Start Redis container
-	redisContainer, err := redis.RunContainer(ctx,
-		testcontainers.WithImage("redis:7-alpine"),
-		testcontainers.WithWaitStrategy(wait.ForLog("Ready to accept connections")),
-	)
-	require.NoError(t, err)
-
-	// Get database connection
-	dbURL, err := postgresContainer.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("postgres", dbURL)
+	// Use SQLite for testing to avoid container dependencies
+	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 
 	// Run migrations
@@ -60,20 +38,12 @@ func NewTestEnvironment(t *testing.T) *TestEnvironment {
 		if db != nil {
 			db.Close()
 		}
-		if postgresContainer != nil {
-			postgresContainer.Terminate(ctx)
-		}
-		if redisContainer != nil {
-			redisContainer.Terminate(ctx)
-		}
 	}
 
 	// Register cleanup
 	t.Cleanup(cleanup)
 
 	return &TestEnvironment{
-		PostgresContainer: postgresContainer,
-		RedisContainer:    redisContainer,
 		DB:               db,
 		Context:          ctx,
 		cleanup:          cleanup,
@@ -82,37 +52,36 @@ func NewTestEnvironment(t *testing.T) *TestEnvironment {
 
 // runMigrations runs database migrations for testing
 func runMigrations(db *sql.DB) error {
-	// Create webauthn_credentials table
+	// Create webauthn_credentials table (SQLite syntax)
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS webauthn_credentials (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			user_id UUID NOT NULL,
-			credential_id BYTEA NOT NULL UNIQUE,
-			public_key BYTEA NOT NULL,
-			attestation_type VARCHAR(50) NOT NULL DEFAULT 'none',
-			transport TEXT[] DEFAULT '{}',
-			flags JSONB NOT NULL DEFAULT '{}',
-			sign_count BIGINT NOT NULL DEFAULT 0,
-			clone_warning BOOLEAN NOT NULL DEFAULT false,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-			last_used_at TIMESTAMP WITH TIME ZONE,
-			CONSTRAINT webauthn_credentials_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			credential_id BLOB NOT NULL UNIQUE,
+			public_key BLOB NOT NULL,
+			attestation_type TEXT NOT NULL DEFAULT 'none',
+			transport TEXT DEFAULT '[]',
+			flags TEXT NOT NULL DEFAULT '{}',
+			sign_count INTEGER NOT NULL DEFAULT 0,
+			clone_warning INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			last_used_at TEXT
 		);
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to create webauthn_credentials table: %w", err)
 	}
 
-	// Create webauthn_sessions table
+	// Create webauthn_sessions table (SQLite syntax)
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS webauthn_sessions (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			user_id UUID NOT NULL,
-			challenge BYTEA NOT NULL,
-			allowed_credential_ids BYTEA[],
-			user_verification VARCHAR(20) NOT NULL DEFAULT 'preferred',
-			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			challenge BLOB NOT NULL,
+			allowed_credential_ids TEXT,
+			user_verification TEXT NOT NULL DEFAULT 'preferred',
+			expires_at TEXT NOT NULL,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		);
 	`)
 	if err != nil {

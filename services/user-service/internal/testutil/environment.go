@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"database/sql"
 	"fmt"
 	"testing"
 	"time"
