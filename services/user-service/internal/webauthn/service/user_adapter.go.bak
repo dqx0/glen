@@ -1,0 +1,107 @@
+package service
+
+import (
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/dqx0/glen/user-service/internal/webauthn/models"
+)
+
+// WebAuthnUser implements the webauthn.User interface for our models
+type WebAuthnUser struct {
+	ID          []byte                          `json:"id"`
+	Name        string                         `json:"name"`
+	DisplayName string                         `json:"display_name"`
+	Credentials []*models.WebAuthnCredential   `json:"credentials"`
+}
+
+// WebAuthnID returns the user's ID as required by webauthn.User interface
+func (u *WebAuthnUser) WebAuthnID() []byte {
+	return u.ID
+}
+
+// WebAuthnName returns the user's name as required by webauthn.User interface  
+func (u *WebAuthnUser) WebAuthnName() string {
+	return u.Name
+}
+
+// WebAuthnDisplayName returns the user's display name as required by webauthn.User interface
+func (u *WebAuthnUser) WebAuthnDisplayName() string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	return u.Name
+}
+
+// WebAuthnIcon returns the user's icon URL (not implemented)
+func (u *WebAuthnUser) WebAuthnIcon() string {
+	return ""
+}
+
+// WebAuthnCredentials returns the user's credentials as required by webauthn.User interface
+func (u *WebAuthnUser) WebAuthnCredentials() []webauthn.Credential {
+	credentials := make([]webauthn.Credential, len(u.Credentials))
+	
+	for i, cred := range u.Credentials {
+		credentials[i] = webauthn.Credential{
+			ID:              cred.CredentialID,
+			PublicKey:       cred.PublicKey,
+			AttestationType: cred.AttestationType,
+			Transport:       convertToWebAuthnTransports(cred.Transport),
+			Flags: webauthn.CredentialFlags{
+				UserPresent:    cred.Flags.UserPresent,
+				UserVerified:   cred.Flags.UserVerified,
+				BackupEligible: cred.Flags.BackupEligible,
+				BackupState:    cred.Flags.BackupState,
+			},
+			Authenticator: webauthn.Authenticator{
+				AAGUID:    make([]byte, 16), // Would be extracted from credential data
+				SignCount: cred.SignCount,
+				CloneWarning: cred.CloneWarning,
+			},
+		}
+	}
+	
+	return credentials
+}
+
+// CredentialExcludeList returns credentials to exclude during registration
+func (u *WebAuthnUser) CredentialExcludeList() []protocol.CredentialDescriptor {
+	excludeList := make([]protocol.CredentialDescriptor, len(u.Credentials))
+	
+	for i, cred := range u.Credentials {
+		excludeList[i] = protocol.CredentialDescriptor{
+			Type:         "public-key",
+			CredentialID: cred.CredentialID,
+			Transport:    convertToProtocolTransports(cred.Transport),
+		}
+	}
+	
+	return excludeList
+}
+
+// Helper function to convert our transport types to webauthn library types
+func convertToWebAuthnTransports(transports []models.AuthenticatorTransport) []string {
+	webAuthnTransports := make([]string, len(transports))
+	for i, transport := range transports {
+		webAuthnTransports[i] = string(transport)
+	}
+	return webAuthnTransports
+}
+
+// Helper function to convert webauthn library transports to our types
+func convertFromWebAuthnTransports(transports []string) []models.AuthenticatorTransport {
+	ourTransports := make([]models.AuthenticatorTransport, len(transports))
+	for i, transport := range transports {
+		ourTransports[i] = models.AuthenticatorTransport(transport)
+	}
+	return ourTransports
+}
+
+// Helper function to convert our transport types to protocol library types
+func convertToProtocolTransports(transports []models.AuthenticatorTransport) []protocol.AuthenticatorTransport {
+	protocolTransports := make([]protocol.AuthenticatorTransport, len(transports))
+	for i, transport := range transports {
+		protocolTransports[i] = protocol.AuthenticatorTransport(transport)
+	}
+	return protocolTransports
+}

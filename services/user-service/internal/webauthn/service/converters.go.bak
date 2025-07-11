@@ -1,0 +1,210 @@
+package service
+
+import (
+	"time"
+	
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/google/uuid"
+	
+	"github.com/dqx0/glen/user-service/internal/webauthn/models"
+)
+
+// Conversion methods for the webAuthnService
+
+func (s *webAuthnService) applyRegistrationOptions(options *protocol.CredentialCreation, reqOptions *RegistrationOptions) {
+	if reqOptions == nil {
+		return
+	}
+	
+	// Apply timeout
+	if reqOptions.Timeout != nil {
+		timeout := uint64(*reqOptions.Timeout)
+		options.Response.Timeout = &timeout
+	}
+	
+	// Apply authenticator selection criteria
+	if options.Response.AuthenticatorSelection == nil {
+		options.Response.AuthenticatorSelection = &protocol.AuthenticatorSelection{}
+	}
+	
+	// Apply resident key requirement
+	if reqOptions.ResidentKeyRequirement != "" {
+		options.Response.AuthenticatorSelection.ResidentKey = protocol.ResidentKeyRequirement(reqOptions.ResidentKeyRequirement)
+	}
+	
+	// Apply user verification
+	if reqOptions.UserVerification != "" {
+		options.Response.AuthenticatorSelection.UserVerification = protocol.UserVerificationRequirement(reqOptions.UserVerification)
+	}
+	
+	// Apply authenticator attachment
+	if reqOptions.AuthenticatorAttachment != "" {
+		attachment := protocol.AuthenticatorAttachment(reqOptions.AuthenticatorAttachment)
+		options.Response.AuthenticatorSelection.AuthenticatorAttachment = attachment
+	}
+	
+	// Apply attestation preference
+	if reqOptions.AttestationConveyancePreference != "" {
+		options.Response.Attestation = protocol.ConveyancePreference(reqOptions.AttestationConveyancePreference)
+	}
+}
+
+func (s *webAuthnService) applyAuthenticationOptions(options *protocol.CredentialAssertion, reqOptions *AuthenticationOptions) {
+	if reqOptions == nil {
+		return
+	}
+	
+	// Apply timeout
+	if reqOptions.Timeout != nil {
+		timeout := uint64(*reqOptions.Timeout)
+		options.Response.Timeout = &timeout
+	}
+	
+	// Apply user verification
+	if reqOptions.UserVerification != "" {
+		options.Response.UserVerification = protocol.UserVerificationRequirement(reqOptions.UserVerification)
+	}
+}
+
+func (s *webAuthnService) convertFromAttestationResponse(resp *models.AuthenticatorAttestationResponse) *protocol.ParsedCredentialCreationData {
+	// Convert our response format to the webauthn library format
+	return &protocol.ParsedCredentialCreationData{
+		ParsedPublicKeyCredential: protocol.ParsedPublicKeyCredential{
+			ParsedCredential: protocol.ParsedCredential{
+				ID:   resp.ID,
+				Type: resp.Type,
+			},
+			RawID: resp.RawID,
+		},
+		Response: protocol.AuthenticatorAttestationResponse{
+			AuthenticatorResponse: protocol.AuthenticatorResponse{
+				ClientDataJSON: resp.Response.ClientDataJSON,
+			},
+			AttestationObject: resp.Response.AttestationObject,
+		},
+	}
+}
+
+func (s *webAuthnService) convertFromAssertionResponse(resp *models.AuthenticatorAssertionResponse) *protocol.ParsedCredentialAssertionData {
+	// Convert our response format to the webauthn library format
+	return &protocol.ParsedCredentialAssertionData{
+		ParsedPublicKeyCredential: protocol.ParsedPublicKeyCredential{
+			ParsedCredential: protocol.ParsedCredential{
+				ID:   resp.ID,
+				Type: resp.Type,
+			},
+			RawID: resp.RawID,
+		},
+		Response: protocol.AuthenticatorAssertionResponse{
+			AuthenticatorResponse: protocol.AuthenticatorResponse{
+				ClientDataJSON: resp.Response.ClientDataJSON,
+			},
+			AuthenticatorData: resp.Response.AuthenticatorData,
+			Signature:         resp.Response.Signature,
+			UserHandle:        resp.Response.UserHandle,
+		},
+	}
+}
+
+func (s *webAuthnService) convertTransports(transports []protocol.AuthenticatorTransport) []models.AuthenticatorTransport {
+	converted := make([]models.AuthenticatorTransport, len(transports))
+	for i, transport := range transports {
+		converted[i] = models.AuthenticatorTransport(transport)
+	}
+	return converted
+}
+
+func (s *webAuthnService) convertCredentialParameters(params []protocol.CredentialParameter) []models.PublicKeyCredentialParameters {
+	converted := make([]models.PublicKeyCredentialParameters, len(params))
+	for i, param := range params {
+		converted[i] = models.PublicKeyCredentialParameters{
+			Type: param.Type,
+			Alg:  models.COSEAlgorithmIdentifier(param.Algorithm),
+		}
+	}
+	return converted
+}
+
+func (s *webAuthnService) convertCredentialDescriptors(descriptors []protocol.CredentialDescriptor) []models.CredentialDescriptor {
+	converted := make([]models.CredentialDescriptor, len(descriptors))
+	for i, desc := range descriptors {
+		transports := make([]models.AuthenticatorTransport, len(desc.Transport))
+		for j, transport := range desc.Transport {
+			transports[j] = models.AuthenticatorTransport(transport)
+		}
+		
+		converted[i] = models.CredentialDescriptor{
+			Type:       desc.Type,
+			ID:         desc.CredentialID,
+			Transports: transports,
+		}
+	}
+	return converted
+}
+
+func (s *webAuthnService) filterCredentials(credentials []*models.WebAuthnCredential, allowedIDs [][]byte) []*models.WebAuthnCredential {
+	if len(allowedIDs) == 0 {
+		return credentials
+	}
+	
+	var filtered []*models.WebAuthnCredential
+	
+	// Create a map for efficient lookup
+	allowedMap := make(map[string]bool)
+	for _, id := range allowedIDs {
+		allowedMap[string(id)] = true
+	}
+	
+	// Filter credentials
+	for _, cred := range credentials {
+		if allowedMap[string(cred.CredentialID)] {
+			filtered = append(filtered, cred)
+		}
+	}
+	
+	return filtered
+}
+
+// Helper function to create a WebAuthn user from minimal data
+func createWebAuthnUser(userID string, credentials []*models.WebAuthnCredential) *WebAuthnUser {
+	return &WebAuthnUser{
+		ID:          []byte(userID),
+		Name:        userID, // In a real implementation, you'd get the actual name
+		DisplayName: userID,
+		Credentials: credentials,
+	}
+}
+
+// Helper function to convert webauthn session data to our session model
+func convertSessionData(sessionData *webauthn.SessionData, userID string, expiresAt time.Time) *models.SessionData {
+	return &models.SessionData{
+		ID:               uuid.New().String(),
+		UserID:           userID,
+		Challenge:        sessionData.Challenge,
+		ExpiresAt:        expiresAt,
+		CreatedAt:        time.Now(),
+		UserVerification: models.UserVerificationPreferred, // Default
+	}
+}
+
+// Additional validation helpers
+
+func validateOrigin(origin string, allowedOrigins []string) bool {
+	for _, allowed := range allowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func validateRPID(rpID string, allowedRPIDs []string) bool {
+	for _, allowed := range allowedRPIDs {
+		if rpID == allowed {
+			return true
+		}
+	}
+	return false
+}
+

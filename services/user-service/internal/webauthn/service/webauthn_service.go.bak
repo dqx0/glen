@@ -1,0 +1,610 @@
+package service
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"time"
+
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/google/uuid"
+
+	"github.com/dqx0/glen/user-service/internal/webauthn/models"
+	"github.com/dqx0/glen/user-service/internal/webauthn/repository"
+)
+
+// webAuthnService implements WebAuthnService
+type webAuthnService struct {
+	webAuthn         *webauthn.WebAuthn
+	credRepo         repository.WebAuthnRepository
+	sessionStore     repository.SessionStore
+	challengeManager ChallengeManager
+	config           *WebAuthnConfig
+}
+
+// NewWebAuthnService creates a new WebAuthn service
+func NewWebAuthnService(
+	webAuthn *webauthn.WebAuthn,
+	credRepo repository.WebAuthnRepository,
+	sessionStore repository.SessionStore,
+	challengeManager ChallengeManager,
+	config *WebAuthnConfig,
+) (WebAuthnService, error) {
+	if config == nil {
+		return nil, ErrInvalidConfig("WebAuthn configuration is required")
+	}
+	
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	
+	if webAuthn == nil {
+		return nil, ErrInvalidConfig("WebAuthn instance is required")
+	}
+	
+	if credRepo == nil {
+		return nil, ErrInvalidConfig("Credential repository is required")
+	}
+	
+	if sessionStore == nil {
+		return nil, ErrInvalidConfig("Session store is required")
+	}
+	
+	if challengeManager == nil {
+		// Create default challenge manager
+		challengeManager = NewChallengeManager(sessionStore, config)
+	}
+
+	return &webAuthnService{
+		webAuthn:         webAuthn,
+		credRepo:         credRepo,
+		sessionStore:     sessionStore,
+		challengeManager: challengeManager,
+		config:           config,
+	}, nil
+}
+
+// BeginRegistration starts a WebAuthn registration ceremony
+func (s *webAuthnService) BeginRegistration(ctx context.Context, req *RegistrationStartRequest) (*RegistrationStartResponse, error) {
+	// Validate request
+	if err := s.validateRegistrationStartRequest(req); err != nil {
+		return nil, err
+	}
+
+	// Check existing credentials count
+	credCount, err := s.credRepo.GetCredentialCount(ctx, req.UserID)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to check credential count", "", err)
+	}
+	
+	if credCount >= s.config.MaxCredentialsPerUser {
+		return nil, ErrCredentialLimit(req.UserID, s.config.MaxCredentialsPerUser)
+	}
+
+	// Get existing credentials to exclude
+	existingCreds, err := s.credRepo.GetCredentialsByUserID(ctx, req.UserID)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get existing credentials", "", err)
+	}
+
+	// Create user entity for WebAuthn
+	user := &WebAuthnUser{
+		ID:          []byte(req.UserID),
+		Name:        req.Username,
+		DisplayName: req.DisplayName,
+		Credentials: existingCreds,
+	}
+
+	// Generate creation options
+	options, sessionData, err := s.webAuthn.BeginRegistration(user)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceInternal, "Failed to begin registration", "", err)
+	}
+
+	// Apply request options
+	if req.Options != nil {
+		s.applyRegistrationOptions(options, req.Options)
+	}
+
+	// Create session
+	sessionID := uuid.New().String()
+	expiresAt := time.Now().Add(s.config.ChallengeExpiry)
+	
+	session := &models.SessionData{
+		ID:               sessionID,
+		UserID:           req.UserID,
+		Challenge:        sessionData.Challenge,
+		ExpiresAt:        expiresAt,
+		CreatedAt:        time.Now(),
+		UserVerification: models.UserVerificationRequirement(options.AuthenticatorSelection.UserVerification),
+	}
+
+	// Store session
+	if err := s.challengeManager.CreateSession(ctx, session); err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to create session", "", err)
+	}
+
+	// Convert WebAuthn options to our models
+	creationOptions := s.convertToCreationOptions(options)
+
+	return &RegistrationStartResponse{
+		SessionID:       sessionID,
+		CreationOptions: creationOptions,
+		ExpiresAt:       expiresAt,
+	}, nil
+}
+
+// FinishRegistration completes a WebAuthn registration ceremony
+func (s *webAuthnService) FinishRegistration(ctx context.Context, req *RegistrationFinishRequest) (*RegistrationResult, error) {
+	// Validate request
+	if err := s.validateRegistrationFinishRequest(req); err != nil {
+		return &RegistrationResult{Success: false, Error: err}, nil
+	}
+
+	// Get session
+	session, err := s.challengeManager.GetSession(ctx, req.SessionID)
+	if err != nil {
+		return &RegistrationResult{Success: false, Error: ErrSessionNotFound(req.SessionID)}, nil
+	}
+
+	// Check session expiry
+	if session.IsExpired() {
+		s.challengeManager.InvalidateSession(ctx, req.SessionID)
+		return &RegistrationResult{Success: false, Error: ErrSessionExpired(req.SessionID)}, nil
+	}
+
+	// Create user entity for verification
+	user := &WebAuthnUser{
+		ID:   []byte(session.UserID),
+		Name: "", // Will be filled from database if needed
+	}
+
+	// Convert attestation response to WebAuthn format
+	webAuthnResponse := s.convertFromAttestationResponse(req.AttestationResponse)
+
+	// Verify registration
+	credential, err := s.webAuthn.FinishRegistration(user, session, webAuthnResponse)
+	if err != nil {
+		return &RegistrationResult{
+			Success: false,
+			Error:   NewServiceErrorWithCause(ErrServiceAuthentication, "Registration verification failed", "", err),
+		}, nil
+	}
+
+	// Convert to our credential model
+	webAuthnCred := &models.WebAuthnCredential{
+		ID:              uuid.New().String(),
+		UserID:          session.UserID,
+		CredentialID:    credential.ID,
+		PublicKey:       credential.PublicKey,
+		AttestationType: string(credential.AttestationType),
+		Transport:       s.convertTransports(credential.Transport),
+		Flags: models.AuthenticatorFlags{
+			UserPresent:    credential.Flags.UserPresent,
+			UserVerified:   credential.Flags.UserVerified,
+			BackupEligible: credential.Flags.BackupEligible,
+			BackupState:    credential.Flags.BackupState,
+		},
+		SignCount:   credential.Authenticator.SignCount,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	// Store credential
+	if err := s.credRepo.CreateCredential(ctx, webAuthnCred); err != nil {
+		return &RegistrationResult{
+			Success: false,
+			Error:   NewServiceErrorWithCause(ErrServiceDependency, "Failed to store credential", "", err),
+		}, nil
+	}
+
+	// Invalidate session
+	s.challengeManager.InvalidateSession(ctx, req.SessionID)
+
+	return &RegistrationResult{
+		Success:      true,
+		CredentialID: string(credential.ID),
+		Credential:   webAuthnCred,
+	}, nil
+}
+
+// BeginAuthentication starts a WebAuthn authentication ceremony
+func (s *webAuthnService) BeginAuthentication(ctx context.Context, req *AuthenticationStartRequest) (*AuthenticationStartResponse, error) {
+	// Validate request
+	if err := s.validateAuthenticationStartRequest(req); err != nil {
+		return nil, err
+	}
+
+	// Determine user ID
+	userID := req.UserID
+	if userID == "" && req.UserIdentifier != "" {
+		// In a real implementation, you might lookup user by identifier
+		// For now, we'll assume UserIdentifier is the UserID
+		userID = req.UserIdentifier
+	}
+
+	if userID == "" {
+		return nil, ErrInvalidRequest("Either user_id or user_identifier must be provided")
+	}
+
+	// Get user credentials
+	credentials, err := s.credRepo.GetCredentialsByUserID(ctx, userID)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get user credentials", "", err)
+	}
+
+	if len(credentials) == 0 {
+		return nil, ErrCredentialNotFound("No credentials found for user")
+	}
+
+	// Filter credentials if specific ones are requested
+	if len(req.AllowedCredentials) > 0 {
+		credentials = s.filterCredentials(credentials, req.AllowedCredentials)
+	}
+
+	// Create user entity for WebAuthn
+	user := &WebAuthnUser{
+		ID:          []byte(userID),
+		Credentials: credentials,
+	}
+
+	// Generate assertion options
+	options, sessionData, err := s.webAuthn.BeginLogin(user)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceInternal, "Failed to begin authentication", "", err)
+	}
+
+	// Apply request options
+	if req.Options != nil {
+		s.applyAuthenticationOptions(options, req.Options)
+	}
+
+	// Create session
+	sessionID := uuid.New().String()
+	expiresAt := time.Now().Add(s.config.ChallengeExpiry)
+	
+	// Convert credential IDs for session storage
+	allowedCredentialIDs := make([][]byte, len(credentials))
+	for i, cred := range credentials {
+		allowedCredentialIDs[i] = cred.CredentialID
+	}
+	
+	session := &models.SessionData{
+		ID:                   sessionID,
+		UserID:               userID,
+		Challenge:            sessionData.Challenge,
+		AllowedCredentialIDs: allowedCredentialIDs,
+		ExpiresAt:            expiresAt,
+		CreatedAt:            time.Now(),
+		UserVerification:     models.UserVerificationRequirement(options.UserVerification),
+	}
+
+	// Store session
+	if err := s.challengeManager.CreateSession(ctx, session); err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to create session", "", err)
+	}
+
+	// Convert WebAuthn options to our models
+	requestOptions := s.convertToRequestOptions(options)
+
+	return &AuthenticationStartResponse{
+		SessionID:      sessionID,
+		RequestOptions: requestOptions,
+		ExpiresAt:      expiresAt,
+	}, nil
+}
+
+// FinishAuthentication completes a WebAuthn authentication ceremony
+func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *AuthenticationFinishRequest) (*AuthenticationResult, error) {
+	// Validate request
+	if err := s.validateAuthenticationFinishRequest(req); err != nil {
+		return &AuthenticationResult{Success: false, Error: err}, nil
+	}
+
+	// Get session
+	session, err := s.challengeManager.GetSession(ctx, req.SessionID)
+	if err != nil {
+		return &AuthenticationResult{Success: false, Error: ErrSessionNotFound(req.SessionID)}, nil
+	}
+
+	// Check session expiry
+	if session.IsExpired() {
+		s.challengeManager.InvalidateSession(ctx, req.SessionID)
+		return &AuthenticationResult{Success: false, Error: ErrSessionExpired(req.SessionID)}, nil
+	}
+
+	// Get credential by ID
+	credential, err := s.credRepo.GetCredentialByID(ctx, req.AssertionResponse.RawID)
+	if err != nil {
+		return &AuthenticationResult{
+			Success: false,
+			Error:   ErrCredentialNotFound(string(req.AssertionResponse.RawID)),
+		}, nil
+	}
+
+	// Verify credential belongs to session user
+	if credential.UserID != session.UserID {
+		return &AuthenticationResult{
+			Success: false,
+			Error:   NewServiceError(ErrServiceAuthentication, "Credential does not belong to user", ""),
+		}, nil
+	}
+
+	// Create user entity for verification
+	user := &WebAuthnUser{
+		ID:          []byte(session.UserID),
+		Credentials: []*models.WebAuthnCredential{credential},
+	}
+
+	// Convert assertion response to WebAuthn format
+	webAuthnResponse := s.convertFromAssertionResponse(req.AssertionResponse)
+
+	// Verify authentication
+	verifiedCredential, err := s.webAuthn.FinishLogin(user, session, webAuthnResponse)
+	if err != nil {
+		return &AuthenticationResult{
+			Success: false,
+			Error:   NewServiceErrorWithCause(ErrServiceAuthentication, "Authentication verification failed", "", err),
+		}, nil
+	}
+
+	// Validate sign count if enabled
+	if s.config.SignCountValidation {
+		if err := s.ValidateCredentialUsage(ctx, credential.CredentialID, verifiedCredential.Authenticator.SignCount); err != nil {
+			return &AuthenticationResult{
+				Success:  false,
+				Warnings: []string{"Sign count validation failed - possible credential cloning"},
+				Error:    err,
+			}, nil
+		}
+	}
+
+	// Update credential sign count and last used time
+	now := time.Now()
+	if err := s.credRepo.UpdateCredentialSignCount(ctx, credential.CredentialID, verifiedCredential.Authenticator.SignCount); err != nil {
+		// Log warning but don't fail authentication
+	}
+	
+	if err := s.credRepo.UpdateCredentialLastUsed(ctx, credential.CredentialID, now); err != nil {
+		// Log warning but don't fail authentication
+	}
+
+	// Invalidate session
+	s.challengeManager.InvalidateSession(ctx, req.SessionID)
+
+	return &AuthenticationResult{
+		Success:            true,
+		UserID:             session.UserID,
+		CredentialID:       string(credential.CredentialID),
+		SignCount:          verifiedCredential.Authenticator.SignCount,
+		AuthenticationTime: now,
+	}, nil
+}
+
+// GetUserCredentials retrieves all credentials for a user
+func (s *webAuthnService) GetUserCredentials(ctx context.Context, userID string) ([]*models.WebAuthnCredential, error) {
+	if userID == "" {
+		return nil, ErrInvalidRequest("User ID is required")
+	}
+
+	credentials, err := s.credRepo.GetCredentialsByUserID(ctx, userID)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credentials", "", err)
+	}
+
+	return credentials, nil
+}
+
+// UpdateCredential updates an existing credential
+func (s *webAuthnService) UpdateCredential(ctx context.Context, credential *models.WebAuthnCredential) error {
+	if credential == nil {
+		return ErrInvalidRequest("Credential is required")
+	}
+
+	if err := credential.Validate(); err != nil {
+		return ErrInvalidCredentialData(err.Error())
+	}
+
+	if err := s.credRepo.UpdateCredential(ctx, credential); err != nil {
+		return NewServiceErrorWithCause(ErrServiceDependency, "Failed to update credential", "", err)
+	}
+
+	return nil
+}
+
+// DeleteCredential deletes a credential for a user
+func (s *webAuthnService) DeleteCredential(ctx context.Context, userID string, credentialID []byte) error {
+	if userID == "" {
+		return ErrInvalidRequest("User ID is required")
+	}
+	
+	if len(credentialID) == 0 {
+		return ErrInvalidRequest("Credential ID is required")
+	}
+
+	// Verify credential belongs to user
+	credential, err := s.credRepo.GetCredentialByID(ctx, credentialID)
+	if err != nil {
+		return NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credential", "", err)
+	}
+
+	if credential.UserID != userID {
+		return NewServiceError(ErrServiceAuthorization, "Credential does not belong to user", "")
+	}
+
+	if err := s.credRepo.DeleteCredential(ctx, credentialID); err != nil {
+		return NewServiceErrorWithCause(ErrServiceDependency, "Failed to delete credential", "", err)
+	}
+
+	return nil
+}
+
+// GetCredentialStatistics returns statistics about stored credentials
+func (s *webAuthnService) GetCredentialStatistics(ctx context.Context) (*CredentialStatistics, error) {
+	repoStats, err := s.credRepo.GetCredentialStatistics(ctx)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credential statistics", "", err)
+	}
+
+	// Convert repository stats to service stats
+	stats := &CredentialStatistics{
+		TotalCredentials:         repoStats.TotalCredentials,
+		ActiveCredentials:        repoStats.TotalCredentials, // Assume all are active for now
+		CredentialsByTransport:   repoStats.CredentialsByTransport,
+		CredentialsByAttestation: repoStats.CredentialsByAttestation,
+		AvgCredentialsPerUser:    repoStats.AvgCredentialsPerUser,
+		CreatedInLast24Hours:     repoStats.CreatedInLast24Hours,
+		CreatedInLastWeek:        repoStats.CreatedInLastWeek,
+		CreatedInLastMonth:       repoStats.CreatedInLastMonth,
+		UsageStatistics:          &CredentialUsageStatistics{
+			// These would be populated from additional queries or metrics
+			TotalAuthentications:     0,
+			AuthenticationsLast24h:   0,
+			AuthenticationsLastWeek:  0,
+			AuthenticationsLastMonth: 0,
+			MostActiveCredentials:    []CredentialActivity{},
+			LeastActiveCredentials:   []CredentialActivity{},
+		},
+	}
+
+	return stats, nil
+}
+
+// CleanupExpiredData removes expired sessions and old credentials
+func (s *webAuthnService) CleanupExpiredData(ctx context.Context) error {
+	// Cleanup expired sessions
+	if err := s.challengeManager.CleanupExpiredSessions(ctx); err != nil {
+		return NewServiceErrorWithCause(ErrServiceDependency, "Failed to cleanup expired sessions", "", err)
+	}
+
+	// Cleanup old credentials if configured
+	if s.config.CredentialTimeout > 0 {
+		retentionPeriod := 365 * 24 * time.Hour // 1 year default
+		if err := s.credRepo.CleanupExpiredCredentials(ctx, retentionPeriod); err != nil {
+			return NewServiceErrorWithCause(ErrServiceDependency, "Failed to cleanup expired credentials", "", err)
+		}
+	}
+
+	return nil
+}
+
+// ValidateCredentialUsage validates credential usage patterns for security
+func (s *webAuthnService) ValidateCredentialUsage(ctx context.Context, credentialID []byte, signCount uint32) error {
+	if !s.config.SignCountValidation {
+		return nil
+	}
+
+	// Get current credential
+	credential, err := s.credRepo.GetCredentialByID(ctx, credentialID)
+	if err != nil {
+		return NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credential for validation", "", err)
+	}
+
+	// Check for sign count regression (possible cloning)
+	if signCount <= credential.SignCount && credential.SignCount > 0 {
+		if s.config.CloneDetection {
+			// Mark credential as potentially cloned
+			credential.CloneWarning = true
+			if err := s.credRepo.UpdateCredential(ctx, credential); err != nil {
+				// Log warning but don't fail
+			}
+			
+			return NewServiceError(ErrServiceAuthentication, "Potential credential cloning detected", 
+				fmt.Sprintf("Sign count regression: current=%d, received=%d", credential.SignCount, signCount))
+		}
+	}
+
+	return nil
+}
+
+// Helper methods for request validation and data conversion
+
+func (s *webAuthnService) validateRegistrationStartRequest(req *RegistrationStartRequest) error {
+	if req == nil {
+		return ErrInvalidRequest("Registration request is required")
+	}
+	if req.UserID == "" {
+		return ErrInvalidRequest("User ID is required")
+	}
+	if req.Username == "" {
+		return ErrInvalidRequest("Username is required")
+	}
+	// Add UUID validation for UserID
+	if _, err := uuid.Parse(req.UserID); err != nil {
+		return ErrInvalidRequest("User ID must be a valid UUID")
+	}
+	return nil
+}
+
+func (s *webAuthnService) validateRegistrationFinishRequest(req *RegistrationFinishRequest) error {
+	if req == nil {
+		return ErrInvalidRequest("Registration finish request is required")
+	}
+	if req.SessionID == "" {
+		return ErrInvalidRequest("Session ID is required")
+	}
+	if req.AttestationResponse == nil {
+		return ErrInvalidRequest("Attestation response is required")
+	}
+	return nil
+}
+
+func (s *webAuthnService) validateAuthenticationStartRequest(req *AuthenticationStartRequest) error {
+	if req == nil {
+		return ErrInvalidRequest("Authentication request is required")
+	}
+	if req.UserID == "" && req.UserIdentifier == "" {
+		return ErrInvalidRequest("Either user_id or user_identifier must be provided")
+	}
+	return nil
+}
+
+func (s *webAuthnService) validateAuthenticationFinishRequest(req *AuthenticationFinishRequest) error {
+	if req == nil {
+		return ErrInvalidRequest("Authentication finish request is required")
+	}
+	if req.SessionID == "" {
+		return ErrInvalidRequest("Session ID is required")
+	}
+	if req.AssertionResponse == nil {
+		return ErrInvalidRequest("Assertion response is required")
+	}
+	return nil
+}
+
+// Helper methods for data conversion will be implemented next...
+// These methods handle the conversion between our models and the go-webauthn library types
+
+func (s *webAuthnService) convertToCreationOptions(options *protocol.CredentialCreation) *models.PublicKeyCredentialCreationOptions {
+	// Convert webauthn library options to our models
+	// This is a simplified conversion - in a real implementation you'd handle all fields
+	return &models.PublicKeyCredentialCreationOptions{
+		Challenge: options.Response.Challenge,
+		RP: &models.RelyingPartyEntity{
+			ID:   s.config.RPID,
+			Name: s.config.RPName,
+		},
+		User: &models.UserEntity{
+			ID:          options.Response.User.ID,
+			Name:        options.Response.User.Name,
+			DisplayName: options.Response.User.DisplayName,
+		},
+		PubKeyCredParams: s.convertCredentialParameters(options.Response.Parameters),
+		Timeout:          &s.config.CredentialTimeout,
+		// Additional fields would be converted here
+	}
+}
+
+func (s *webAuthnService) convertToRequestOptions(options *protocol.CredentialAssertion) *models.PublicKeyCredentialRequestOptions {
+	// Convert webauthn library options to our models  
+	return &models.PublicKeyCredentialRequestOptions{
+		Challenge:        options.Response.Challenge,
+		Timeout:          &s.config.CredentialTimeout,
+		RPID:             s.config.RPID,
+		AllowCredentials: s.convertCredentialDescriptors(options.Response.AllowedCredentials),
+		UserVerification: models.UserVerificationRequirement(options.Response.UserVerification),
+	}
+}
+
+// Additional helper methods would be implemented here for full functionality...
