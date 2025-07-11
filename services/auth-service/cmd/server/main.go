@@ -6,19 +6,37 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-redis/redis/v8"
+	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"
+
 	"github.com/dqx0/glen/auth-service/internal/handlers"
 	"github.com/dqx0/glen/auth-service/internal/repository"
 	"github.com/dqx0/glen/auth-service/internal/service"
-	_ "github.com/lib/pq"
+	"github.com/dqx0/glen/auth-service/internal/webauthn"
+	"github.com/dqx0/glen/auth-service/internal/webauthn/config"
+	webauthnMiddleware "github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
 )
 
 func main() {
-	// データベース接続
+	// データベース接続 (SQL)
 	db, err := connectDB()
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer db.Close()
+
+	// データベース接続 (SQLx)
+	sqlxDB := sqlx.NewDb(db, "postgres")
+
+	// Redis接続
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     getRedisAddr(),
+		Password: "",
+		DB:       0,
+	})
 
 	// RSA鍵ペアの取得（実際の環境では環境変数やファイルから読み込み）
 	privateKey, publicKey, err := service.GenerateTestKeyPair()
@@ -35,19 +53,61 @@ func main() {
 	authService := service.NewAuthService(tokenRepo, jwtService)
 	authHandler := handlers.NewAuthHandler(authService)
 
-	// ルーターの設定
-	mux := http.NewServeMux()
+	// WebAuthn設定
+	webAuthnConfig := &config.WebAuthnConfig{
+		RPDisplayName: "Glen Authentication System",
+		RPID:          "localhost",
+		RPOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "https://glen.dqx0.com"},
+		RPIcon:        "",
+		Timeout:       60000, // 60 seconds
+		Debug:         true,
+	}
 
-	// 認証エンドポイント
-	mux.HandleFunc("/api/v1/auth/login", authHandler.Login)
-	mux.HandleFunc("/api/v1/auth/refresh", authHandler.RefreshToken)
-	mux.HandleFunc("/api/v1/auth/api-keys", authHandler.CreateAPIKey)
-	mux.HandleFunc("/api/v1/auth/revoke", authHandler.RevokeToken)
-	mux.HandleFunc("/api/v1/auth/tokens", authHandler.ListTokens)
-	mux.HandleFunc("/api/v1/auth/validate-api-key", authHandler.ValidateAPIKey)
+	// WebAuthnモジュールの作成
+	webAuthnModule, err := webauthn.NewWebAuthnModule(sqlxDB, redisClient, webAuthnConfig)
+	if err != nil {
+		log.Fatal("Failed to create WebAuthn module:", err)
+	}
+
+	// Database migration for WebAuthn tables
+	migration := webauthn.NewDatabaseMigration(sqlxDB)
+	if err := migration.CreateWebAuthnTables(); err != nil {
+		log.Printf("Warning: Failed to create WebAuthn tables: %v", err)
+	}
+
+	// WebAuthn JWT設定で新しいハンドラーを作成
+	webAuthnJWTConfig := webauthnMiddleware.NewJWTConfig(jwtService)
+	webAuthnHandler := webauthn.NewWebAuthnHandlerWithJWT(webAuthnModule.Service, webAuthnJWTConfig)
+
+	// Chi ルーターの設定
+	r := chi.NewRouter()
+
+	// ミドルウェア
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.RequestID)
+
+	// CORS設定 - API Gateway経由でアクセスされるため無効化
+	// API Gatewayで統一的にCORS処理を行う
+
+	// APIルート
+	r.Route("/api/v1", func(r chi.Router) {
+		// 認証エンドポイント
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/login", authHandler.Login)
+			r.Post("/refresh", authHandler.RefreshToken)
+			r.Post("/api-keys", authHandler.CreateAPIKey)
+			r.Post("/revoke", authHandler.RevokeToken)
+			r.Get("/tokens", authHandler.ListTokens)
+			r.Post("/validate-api-key", authHandler.ValidateAPIKey)
+		})
+
+		// WebAuthnエンドポイント
+		webAuthnHandler.RegisterRoutes(r)
+	})
 
 	// ヘルスチェック
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("auth OK"))
 	})
@@ -55,11 +115,11 @@ func main() {
 	// サーバー起動
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8081"
 	}
 
-	log.Printf("Auth service starting on port %s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	log.Printf("Auth service (with WebAuthn) starting on port %s", port)
+	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal("Server failed to start:", err)
 	}
 }
@@ -104,4 +164,11 @@ func connectDB() (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func getRedisAddr() string {
+	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
+		return addr
+	}
+	return "localhost:6379"
 }

@@ -14,7 +14,14 @@ type CORSMiddleware struct {
 // NewCORSMiddleware は新しいCORSMiddlewareを作成する
 func NewCORSMiddleware() *CORSMiddleware {
 	return &CORSMiddleware{
-		allowedOrigins: []string{"http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:3000", "http://127.0.0.1:8080"}, // フロントエンドのオリジンを明示的に許可
+		allowedOrigins: []string{
+			"http://localhost:3000", 
+			"http://localhost:5173", 
+			"http://localhost:8080", 
+			"http://127.0.0.1:3000", 
+			"http://127.0.0.1:8080",
+			"https://glen.dqx0.com",
+		}, // フロントエンドのオリジンを明示的に許可
 		allowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		allowedHeaders: []string{"Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRF-Token", "Access-Control-Request-Method", "Access-Control-Request-Headers"},
 	}
@@ -26,11 +33,15 @@ func (c *CORSMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 		// リクエストのOriginを取得
 		origin := r.Header.Get("Origin")
 
-		// 開発環境用により寛容な設定
+		// Originチェック
 		if origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-		} else {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+			// 許可されたOriginかチェック
+			for _, allowed := range c.allowedOrigins {
+				if origin == allowed {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					break
+				}
+			}
 		}
 
 		w.Header().Set("Access-Control-Allow-Methods", joinStrings(c.allowedMethods, ", "))

@@ -46,7 +46,7 @@ func main() {
 	// サーバー起動
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8083"
 	}
 
 	log.Printf("Social service starting on port %s", port)

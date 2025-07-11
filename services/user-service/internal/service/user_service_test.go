@@ -198,12 +198,12 @@ func TestUserService_Login(t *testing.T) {
 			expectedErr: "invalid credentials",
 		},
 		{
-			name:     "login fails - no password set (WebAuthn only user)",
+			name:     "login fails - no password set",
 			username: "testuser",
 			password: "password123",
 			setupMock: func(m *MockUserRepository) {
-				webauthnOnlyUser, _ := models.NewUser("testuser", "test@example.com", "")
-				m.On("GetByUsername", mock.Anything, "testuser").Return(webauthnOnlyUser, nil)
+				noPasswordUser, _ := models.NewUser("testuser", "test@example.com", "")
+				m.On("GetByUsername", mock.Anything, "testuser").Return(noPasswordUser, nil)
 			},
 			wantErr:     true,
 			expectedErr: "password authentication not available",

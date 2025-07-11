@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	
 	"github.com/dqx0/glen/user-service/internal/handlers"
 	"github.com/dqx0/glen/user-service/internal/repository"
 	"github.com/dqx0/glen/user-service/internal/service"
@@ -20,28 +23,34 @@ func main() {
 	}
 	defer db.Close()
 
+
+
 	// 依存関係の初期化
 	userRepo := repository.NewUserRepository(db)
 	userService := service.NewUserService(userRepo)
 	userHandler := handlers.NewUserHandler(userService)
 
-	// ルーターの設定
-	mux := http.NewServeMux()
+	// Chi ルーターの設定
+	r := chi.NewRouter()
 
-	// ユーザー関連のエンドポイント
-	mux.HandleFunc("POST /api/v1/users/register", userHandler.Register)
-	mux.HandleFunc("POST /api/v1/users/login", userHandler.Login)
-	mux.HandleFunc("GET /api/v1/users", userHandler.GetUser)
+	// ミドルウェア
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
-	// WebAuthn関連のエンドポイント
-	mux.HandleFunc("/api/v1/webauthn/register/start", userHandler.WebAuthnRegisterStart)
-	mux.HandleFunc("/api/v1/webauthn/register/finish", userHandler.WebAuthnRegisterFinish)
-	mux.HandleFunc("/api/v1/webauthn/authenticate/start", userHandler.WebAuthnAuthenticateStart)
-	mux.HandleFunc("/api/v1/webauthn/authenticate/finish", userHandler.WebAuthnAuthenticateFinish)
-	mux.HandleFunc("/api/v1/webauthn/credentials", userHandler.HandleWebAuthnCredentials)
+	// CORS設定 - API Gateway経由でアクセスされるため無効化
+	// API Gatewayで統一的にCORS処理を行う
+
+	// API v1 ルートの設定
+	r.Route("/api/v1", func(r chi.Router) {
+		// 従来のユーザー関連のエンドポイント
+		r.Post("/users/register", userHandler.Register)
+		r.Post("/users/login", userHandler.Login)
+		r.Get("/users", userHandler.GetUser)
+		
+	})
 
 	// ヘルスチェック
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("user OK"))
 	})
@@ -49,11 +58,11 @@ func main() {
 	// サーバー起動
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8082"
 	}
 
 	log.Printf("User service starting on port %s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal("Server failed to start:", err)
 	}
 }
