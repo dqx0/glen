@@ -39,8 +39,9 @@ func NewSocialHandler(repo SocialAccountRepository, oauth2Configs map[string]*mo
 
 // AuthorizeRequest は認証開始のリクエスト
 type AuthorizeRequest struct {
-	Provider string `json:"provider"`
-	State    string `json:"state"`
+	Provider    string `json:"provider"`
+	RedirectURI string `json:"redirect_uri"`
+	State       string `json:"state"`
 }
 
 // AuthorizeResponse は認証URLのレスポンス
@@ -52,16 +53,23 @@ type AuthorizeResponse struct {
 
 // CallbackRequest はOAuth2コールバックのリクエスト
 type CallbackRequest struct {
-	Provider string `json:"provider"`
-	Code     string `json:"code"`
-	State    string `json:"state"`
-	UserID   string `json:"user_id"`
+	Provider    string `json:"provider"`
+	Code        string `json:"code"`
+	State       string `json:"state"`
+	RedirectURI string `json:"redirect_uri"`
 }
 
 // CallbackResponse はコールバック処理のレスポンス
 type CallbackResponse struct {
 	SocialAccount *models.SocialAccount `json:"social_account"`
 	IsNewAccount  bool                  `json:"is_new_account"`
+}
+
+// SocialLoginResponse はソーシャルログインのレスポンス
+type SocialLoginResponse struct {
+	UserID        string                `json:"user_id"`
+	SocialAccount *models.SocialAccount `json:"social_account"`
+	IsNewUser     bool                  `json:"is_new_user"`
 }
 
 // LinkAccountRequest はアカウント連携のリクエスト
@@ -98,6 +106,11 @@ func (h *SocialHandler) GetAuthURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// リダイレクトURIの設定（リクエストから受け取った値を使用）
+	if req.RedirectURI != "" {
+		config.RedirectURL = req.RedirectURI
+	}
+
 	// OAuth2Serviceの作成
 	oauth2Service := service.NewOAuth2Service(config)
 	if oauth2Service == nil {
@@ -117,8 +130,8 @@ func (h *SocialHandler) GetAuthURL(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, resp)
 }
 
-// HandleCallback はOAuth2コールバックを処理する
-func (h *SocialHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
+// HandleSocialLogin はソーシャルログインのOAuth2コールバックを処理する
+func (h *SocialHandler) HandleSocialLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -141,6 +154,11 @@ func (h *SocialHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		writeErrorResponse(w, http.StatusBadRequest, "provider not configured")
 		return
+	}
+
+	// リダイレクトURIの設定（リクエストから受け取った値を使用）
+	if req.RedirectURI != "" {
+		config.RedirectURL = req.RedirectURI
 	}
 
 	// OAuth2Serviceの作成
@@ -173,15 +191,108 @@ func (h *SocialHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	// 既存のソーシャルアカウントを確認
 	existingAccount, err := h.repo.GetByProviderAndProviderID(r.Context(), req.Provider, providerID)
+	if err != nil {
+		// アカウントが見つからない場合は新規ユーザー作成が必要
+		writeErrorResponse(w, http.StatusNotFound, "social account not found - please register first or link your account")
+		return
+	}
+
+	// 既存のアカウントを更新
+	email, _ := extractEmail(userInfo)
+	displayName, _ := extractDisplayName(req.Provider, userInfo)
+	existingAccount.UpdateProfile(email, displayName, userInfo)
+
+	if err := h.repo.Update(r.Context(), existingAccount); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to update social account: %v", err))
+		return
+	}
+
+	resp := SocialLoginResponse{
+		UserID:        existingAccount.UserID,
+		SocialAccount: existingAccount,
+		IsNewUser:     false,
+	}
+	writeJSONResponse(w, http.StatusOK, resp)
+}
+
+// HandleCallback はOAuth2コールバックを処理する（アカウント連携用）
+func (h *SocialHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req CallbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	// プロバイダーの検証
+	if !models.IsValidProvider(req.Provider) {
+		writeErrorResponse(w, http.StatusBadRequest, "unsupported provider")
+		return
+	}
+
+	// OAuth2設定の取得
+	config, exists := h.oauth2Configs[req.Provider]
+	if !exists {
+		writeErrorResponse(w, http.StatusBadRequest, "provider not configured")
+		return
+	}
+
+	// リダイレクトURIの設定（リクエストから受け取った値を使用）
+	if req.RedirectURI != "" {
+		config.RedirectURL = req.RedirectURI
+	}
+
+	// OAuth2Serviceの作成
+	oauth2Service := service.NewOAuth2Service(config)
+	if oauth2Service == nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "failed to create OAuth2 service")
+		return
+	}
+
+	// 認証コードをトークンに交換
+	token, err := oauth2Service.ExchangeCodeForToken(r.Context(), req.Code)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("failed to exchange code: %v", err))
+		return
+	}
+
+	// ユーザー情報の取得
+	userInfo, err := oauth2Service.GetUserInfo(r.Context(), token)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to get user info: %v", err))
+		return
+	}
+
+	// プロバイダーIDの抽出
+	providerID, err := extractProviderID(req.Provider, userInfo)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to extract provider ID: %v", err))
+		return
+	}
+
+	// 認証されたユーザーIDを取得（必須）
+	userID := getUserIDFromContext(r)
+	if userID == "" {
+		writeErrorResponse(w, http.StatusUnauthorized, "user authentication required")
+		return
+	}
+
+	// 既存のソーシャルアカウントを確認
+	existingAccount, err := h.repo.GetByProviderAndProviderID(r.Context(), req.Provider, providerID)
 	isNewAccount := err != nil
 
 	if isNewAccount {
+
 		// 新しいソーシャルアカウントを作成
 		email, _ := extractEmail(userInfo)
 		displayName, _ := extractDisplayName(req.Provider, userInfo)
 
 		newAccount, err := models.NewSocialAccount(
-			req.UserID,
+			userID,
 			req.Provider,
 			providerID,
 			email,

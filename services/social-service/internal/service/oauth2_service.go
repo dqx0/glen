@@ -65,6 +65,7 @@ func (s *OAuth2Service) ExchangeCodeForToken(ctx context.Context, code string) (
 		return nil, ErrInvalidAuthCode
 	}
 	
+	
 	// トークンリクエストのパラメータを準備
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
@@ -95,6 +96,7 @@ func (s *OAuth2Service) ExchangeCodeForToken(ctx context.Context, code string) (
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 	
+	
 	// HTTPステータスの確認
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("token exchange failed with status %d: %s", resp.StatusCode, string(body))
@@ -105,6 +107,7 @@ func (s *OAuth2Service) ExchangeCodeForToken(ctx context.Context, code string) (
 	if err := json.Unmarshal(body, &token); err != nil {
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
+	
 	
 	return &token, nil
 }
@@ -142,6 +145,7 @@ func (s *OAuth2Service) GetUserInfo(ctx context.Context, token *OAuth2Token) (ma
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 	
+	
 	// HTTPステータスの確認
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("user info request failed with status %d: %s", resp.StatusCode, string(body))
@@ -152,6 +156,7 @@ func (s *OAuth2Service) GetUserInfo(ctx context.Context, token *OAuth2Token) (ma
 	if err := json.Unmarshal(body, &userInfo); err != nil {
 		return nil, fmt.Errorf("failed to parse user info response: %w", err)
 	}
+	
 	
 	return userInfo, nil
 }

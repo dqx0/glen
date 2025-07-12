@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { SocialService } from '../services/socialService';
 import SocialLoginButton from './SocialLoginButton';
 import type { SocialAccount, SocialProvider } from '../types/social';
@@ -10,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 const SocialAccountsSection: React.FC = () => {
+  const { user } = useAuth();
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [availableProviders, setAvailableProviders] = useState<SocialProvider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -269,8 +271,8 @@ const SocialAccountsSection: React.FC = () => {
         </div>
       )}
 
-      {/* 未連携プロバイダー */}
-      {getUnconnectedProviders().length > 0 && (
+      {/* 未連携プロバイダー（ログイン済みユーザーのみ） */}
+      {user && getUnconnectedProviders().length > 0 && (
         <div>
           <h4 style={{ 
             fontSize: '1rem', 
@@ -293,6 +295,23 @@ const SocialAccountsSection: React.FC = () => {
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ログインしていない場合のメッセージ */}
+      {!user && (
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '2rem',
+          color: '#6b7280'
+        }}>
+          <LinkIcon style={{ 
+            width: '3rem', 
+            height: '3rem', 
+            margin: '0 auto 0.5rem',
+            color: '#d1d5db'
+          }} />
+          <p style={{ margin: 0 }}>ソーシャルアカウントを連携するには、まずログインしてください</p>
         </div>
       )}
 

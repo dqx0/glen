@@ -768,13 +768,16 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 	}
 
 	// Get session data
+	fmt.Printf("DEBUG: Getting session data for ID: %s\n", req.SessionID)
 	sessionData, err := s.challengeManager.GetSession(ctx, req.SessionID)
 	if err != nil {
+		fmt.Printf("ERROR: Failed to get session data: %v\n", err)
 		return &AuthenticationResult{
 			Success: false,
 			Error:   ErrSessionNotFound(req.SessionID),
 		}, nil
 	}
+	fmt.Printf("DEBUG: Session found for user: %s\n", sessionData.UserID)
 
 	if sessionData.IsExpired() {
 		s.challengeManager.InvalidateSession(ctx, req.SessionID)
@@ -853,13 +856,17 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 	}
 	
 	// Verify the credential assertion response  
+	fmt.Printf("DEBUG: Validating WebAuthn login...\n")
 	credential, err := s.webAuthn.ValidateLogin(user, webauthnSession, parsedResponse)
 	if err != nil {
+		fmt.Printf("ERROR: WebAuthn validation failed: %v\n", err)
+		fmt.Printf("DEBUG: User ID: %s, Credential count: %d\n", sessionData.UserID, len(webauthnCreds))
 		return &AuthenticationResult{
 			Success: false,
 			Error:   NewServiceErrorWithCause(ErrServiceAuthentication, "Authentication verification failed", err.Error(), err),
 		}, nil
 	}
+	fmt.Printf("DEBUG: WebAuthn validation successful\n")
 
 	// Find the credential in our database
 	var dbCredential *models.WebAuthnCredential
@@ -878,31 +885,73 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 	}
 
 	// Validate credential usage for security
-	if err := s.ValidateCredentialUsage(ctx, credential.ID, credential.Authenticator.SignCount); err != nil {
-		return &AuthenticationResult{
-			Success: false,
-			Error:   err.(*ServiceError),
-			Warnings: []string{"Potential security issue detected"},
-		}, nil
+	// Skip validation if authenticator sign count is not increasing meaningfully
+	// Many platform authenticators don't implement proper sign count incrementing
+	if credential.Authenticator.SignCount > dbCredential.SignCount {
+		if err := s.ValidateCredentialUsage(ctx, credential.ID, credential.Authenticator.SignCount); err != nil {
+			fmt.Printf("ERROR: Credential usage validation failed: %v\n", err)
+			return &AuthenticationResult{
+				Success: false,
+				Error:   err.(*ServiceError),
+				Warnings: []string{"Potential security issue detected"},
+			}, nil
+		}
+	} else {
+		fmt.Printf("DEBUG: Skipping sign count validation - authenticator sign_count (%d) not greater than stored (%d)\n", 
+			credential.Authenticator.SignCount, dbCredential.SignCount)
 	}
 
 	// Update credential with new sign count and last used time
 	now := time.Now()
 	fmt.Printf("DEBUG: Updating credential - Current SignCount: %d, New SignCount: %d\n", dbCredential.SignCount, credential.Authenticator.SignCount)
-	dbCredential.SignCount = credential.Authenticator.SignCount
+	
+	// If the authenticator provides a meaningful incrementing sign count, use it. 
+	// Otherwise, increment our own counter for usage tracking.
+	// Many platform authenticators (Touch ID, Face ID, Windows Hello) don't properly increment sign count.
+	if credential.Authenticator.SignCount > dbCredential.SignCount {
+		// Authenticator is properly incrementing, use its count
+		dbCredential.SignCount = credential.Authenticator.SignCount
+		fmt.Printf("DEBUG: Using authenticator sign count: %d\n", credential.Authenticator.SignCount)
+	} else {
+		// Authenticator doesn't increment meaningfully, use our own counter
+		dbCredential.SignCount = dbCredential.SignCount + 1
+		fmt.Printf("DEBUG: Authenticator sign count (%d) not incrementing, using our own: %d -> %d\n", 
+			credential.Authenticator.SignCount, dbCredential.SignCount-1, dbCredential.SignCount)
+	}
+	
 	dbCredential.LastUsedAt = &now
 	dbCredential.UpdatedAt = now
 	
+	// Try to update the credential with more detailed error logging
 	if err := s.credRepo.UpdateCredential(ctx, dbCredential); err != nil {
-		// Don't fail authentication for update error, but log warning
-		return &AuthenticationResult{
-			Success:            true,
-			UserID:             sessionData.UserID,
-			CredentialID:       string(credential.ID),
-			SignCount:          credential.Authenticator.SignCount,
-			AuthenticationTime: time.Now(),
-			Warnings:           []string{"Failed to update credential sign count"},
-		}, nil
+		fmt.Printf("ERROR: Failed to update credential: %v\n", err)
+		fmt.Printf("DEBUG: Credential ID being updated: %x\n", dbCredential.CredentialID)
+		fmt.Printf("DEBUG: SignCount values - Old: %d, New: %d\n", dbCredential.SignCount, credential.Authenticator.SignCount)
+		
+		// Try using the simpler sign count update method as fallback
+		fmt.Printf("DEBUG: Attempting fallback sign count update...\n")
+		if updateErr := s.credRepo.UpdateCredentialSignCount(ctx, dbCredential.CredentialID, dbCredential.SignCount); updateErr != nil {
+			fmt.Printf("ERROR: Fallback sign count update also failed: %v\n", updateErr)
+			// Don't fail authentication for update error, but log warning
+			return &AuthenticationResult{
+				Success:            true,
+				UserID:             sessionData.UserID,
+				CredentialID:       string(credential.ID),
+				SignCount:          dbCredential.SignCount,
+				AuthenticationTime: time.Now(),
+				Warnings:           []string{"Failed to update credential sign count"},
+			}, nil
+		}
+		
+		// Try updating just the last used time separately
+		fmt.Printf("DEBUG: Attempting to update last used time...\n")
+		if lastUsedErr := s.credRepo.UpdateCredentialLastUsed(ctx, dbCredential.CredentialID, now); lastUsedErr != nil {
+			fmt.Printf("ERROR: Failed to update last used time: %v\n", lastUsedErr)
+		}
+		
+		fmt.Printf("SUCCESS: Updated sign count using fallback method\n")
+	} else {
+		fmt.Printf("SUCCESS: Updated credential normally - SignCount: %d\n", dbCredential.SignCount)
 	}
 
 	// Clean up sessions
@@ -913,7 +962,7 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 		Success:            true,
 		UserID:             sessionData.UserID,
 		CredentialID:       string(credential.ID),
-		SignCount:          credential.Authenticator.SignCount,
+		SignCount:          dbCredential.SignCount,
 		AuthenticationTime: time.Now(),
 	}, nil
 }

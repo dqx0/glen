@@ -32,10 +32,16 @@ export interface LoginResponse {
 export interface UserContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<void>;
+  loginWithWebAuthn: (userId: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   setUserData: (userData: User) => void;
   loading: boolean;
   error: string | null;
+}
+
+export interface UserAPIResponse {
+  success: boolean;
+  user: User;
 }

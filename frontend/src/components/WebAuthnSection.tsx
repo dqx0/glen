@@ -2,11 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { WebAuthnService } from '../services/webauthnService';
-import { AuthService } from '../services/authService';
-import { UserService } from '../services/userService';
 import WebAuthnLoginButton from './WebAuthnLoginButton';
 import type { AuthenticationFinishResponse } from '../types/webauthn';
-import type { User } from '../types/user';
 
 interface WebAuthnSectionProps {
   username: string;
@@ -22,7 +19,7 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
   const [isSupported, setIsSupported] = useState(false);
   const [isPlatformSupported, setIsPlatformSupported] = useState(false);
   const navigate = useNavigate();
-  const { user, setUserData } = useAuth();
+  const { user, loginWithWebAuthn } = useAuth();
 
   useEffect(() => {
     checkWebAuthnSupport();
@@ -46,38 +43,12 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
         throw new Error('User ID not found in authentication response');
       }
 
-      // まず、WebAuthn認証レスポンスに基づいてJWTトークンを発行
-      console.log('JWTトークンを発行中...');
-      const authResponse = await AuthService.login({
-        user_id: response.user_id,
-        username: 'webauthn-user',
-        session_name: 'webauthn-session',
-        scopes: ['read', 'write'],
-      });
-      console.log('JWTトークン発行成功');
-
-      // トークンを保存（これでAPIアクセスが可能になる）
-      AuthService.storeTokens(authResponse);
-      console.log('トークン保存完了');
-      
-      // トークンが設定された状態でユーザー情報を取得
-      console.log('ユーザー情報を取得中...');
-      const userData = await UserService.getUserById(response.user_id);
-      console.log('ユーザー情報取得成功:', userData);
-
-      // ユーザー情報を保存
-      UserService.storeUser(userData);
-      localStorage.setItem('user_id', response.user_id);
-      localStorage.setItem('username', userData.username);
-      console.log('ユーザー情報保存完了');
-
-      // AuthContextの状態を更新
-      console.log('AuthContextの状態を更新中...');
-      setUserData(userData);
-      console.log('AuthContext更新完了、current user:', userData);
+      // AuthContextのWebAuthn専用ログイン関数を使用（パスワードログインと同じパターン）
+      console.log('WebAuthn ログイン処理を開始...');
+      await loginWithWebAuthn(response.user_id);
+      console.log('WebAuthn ログイン処理完了');
 
       // 少し待ってからダッシュボードにリダイレクト
-      console.log('ダッシュボードにリダイレクト中...');
       setTimeout(() => {
         navigate('/dashboard');
       }, 100);

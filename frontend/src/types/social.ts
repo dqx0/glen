@@ -21,7 +21,9 @@ export interface AuthorizeRequest {
 }
 
 export interface AuthorizeResponse {
-  authorization_url: string;
+  authorization_url?: string;
+  auth_url?: string;
+  provider: string;
   state: string;
 }
 
@@ -33,7 +35,7 @@ export interface CallbackRequest {
 }
 
 export interface CallbackResponse {
-  user: {
+  user?: {
     id: string;
     username: string;
     email: string;
@@ -41,11 +43,18 @@ export interface CallbackResponse {
     updated_at: string;
   };
   social_account: SocialAccount;
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-  token_type: string;
-  scopes: string[];
+  is_new_account: boolean;
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  token_type?: string;
+  scopes?: string[];
+}
+
+export interface SocialLoginResponse {
+  user_id: string;
+  social_account: SocialAccount;
+  is_new_user: boolean;
 }
 
 export interface ProvidersResponse {

@@ -56,6 +56,7 @@ type UserResponse struct {
 	EmailVerified bool   `json:"email_verified"`
 	IsActive      bool   `json:"is_active"`
 	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // ErrorResponse はエラーレスポンスの構造体
@@ -112,6 +113,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		EmailVerified: user.EmailVerified,
 		IsActive:      user.IsActive(),
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -158,6 +160,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		EmailVerified: user.EmailVerified,
 		IsActive:      user.IsActive(),
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -195,6 +198,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		EmailVerified: user.EmailVerified,
 		IsActive:      user.IsActive(),
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -236,6 +240,7 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 		EmailVerified: user.EmailVerified,
 		IsActive:      user.IsActive(),
 		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

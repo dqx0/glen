@@ -32,6 +32,7 @@ func main() {
 
 	// ソーシャルログインエンドポイント
 	mux.HandleFunc("/api/v1/social/authorize", socialHandler.GetAuthURL)
+	mux.HandleFunc("/api/v1/social/login", socialHandler.HandleSocialLogin)
 	mux.HandleFunc("/api/v1/social/callback", socialHandler.HandleCallback)
 	mux.HandleFunc("/api/v1/social/accounts", socialHandler.GetUserSocialAccounts)
 	mux.HandleFunc("/api/v1/social/accounts/", socialHandler.DeleteSocialAccount)

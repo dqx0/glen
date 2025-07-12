@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { SocialService } from '../services/socialService';
@@ -10,7 +10,8 @@ const AuthCallback: React.FC = () => {
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const hasProcessed = useRef(false);
 
   useEffect(() => {
     // すでにログイン済みの場合はダッシュボードにリダイレクト
@@ -19,40 +20,136 @@ const AuthCallback: React.FC = () => {
       return;
     }
 
-    handleCallback();
+    // 初回のみ実行（重複実行を防ぐ）
+    if (!hasProcessed.current) {
+      hasProcessed.current = true;
+      handleCallback();
+    }
   }, [user, navigate]);
 
   const handleCallback = async () => {
+    console.log('handleCallback called', { hasProcessed: hasProcessed.current });
+    
+    // 重複実行を防ぐ
+    if (hasProcessed.current && status !== 'processing') {
+      console.log('Duplicate call prevented');
+      return;
+    }
+
     try {
-      setStatus('processing');
+      // モードを確認（ログインか連携か）
+      const mode = sessionStorage.getItem('oauth2_mode') || 'link';
+      console.log('OAuth2 callback mode:', mode);
+      
+      let callbackResponse;
+      
+      if (mode === 'login') {
+        // ソーシャルログイン処理
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        const savedProvider = sessionStorage.getItem('oauth2_provider') as any;
+        const savedRedirectUri = sessionStorage.getItem('oauth2_redirect_uri');
+        
+        if (!code || !state || !savedProvider || !savedRedirectUri) {
+          throw new Error('Missing OAuth2 parameters for social login');
+        }
+        
+        const socialLoginResponse = await SocialService.socialLogin({
+          provider: savedProvider,
+          code,
+          state,
+          redirect_uri: savedRedirectUri,
+        });
+        
+        console.log('Social login response:', socialLoginResponse);
+        
+        // まずダミーのユーザー名でJWTトークンを発行
+        const authResponse = await AuthService.login({
+          user_id: socialLoginResponse.user_id,
+          username: 'social-user', // 仮のユーザー名
+          session_name: 'social-session',
+          scopes: ['read', 'write'],
+        });
+        
+        console.log('JWT token received for social login');
+        
+        // トークンを先に設定（これでAPI認証が通る）
+        AuthService.storeTokens(authResponse);
+        
+        // トークンが設定された状態でユーザー情報を取得
+        const userData = await UserService.getUserById(socialLoginResponse.user_id);
+        console.log('User data loaded for social login:', userData);
+        
+        // ユーザー情報を保存
+        UserService.storeUser(userData);
+        localStorage.setItem('username', userData.username);
+        
+        setStatus('success');
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 2000);
+        return;
+      } else {
+        // アカウント連携処理（既存）
+        callbackResponse = await SocialService.handleOAuth2Callback();
+      }
+      
+      console.log('Callback response:', callbackResponse);
 
-      // OAuth2コールバック処理
-      const callbackResponse = await SocialService.handleOAuth2Callback();
+      // ソーシャルアカウント連携が成功した場合
+      if (callbackResponse.social_account) {
+        console.log('Social account linking successful:', callbackResponse.social_account);
+        setStatus('success');
+        
+        // ユーザー情報を更新（ログイン済みユーザーの場合）
+        if (user) {
+          console.log('User is logged in, refreshing user data...');
+          try {
+            await refreshUser();
+          } catch (error) {
+            console.error('Failed to refresh user data:', error);
+          }
+        } else {
+          console.log('No user logged in - this should not happen as callback requires authentication');
+          // この状況は発生しないはずです（API Gatewayで認証チェック済み）
+          setError('認証エラー: ソーシャルアカウント連携にはログインが必要です');
+          setStatus('error');
+          setTimeout(() => {
+            navigate('/login');
+          }, 3000);
+          return;
+        }
+        
+        // 少し待ってからダッシュボードにリダイレクト（アカウント連携完了）
+        setTimeout(() => {
+          console.log('Redirecting to dashboard...');
+          navigate('/dashboard?social_linked=true');
+        }, 2000);
+        return;
+      }
 
-      // トークンとユーザー情報を保存
-      UserService.storeUser(callbackResponse.user);
-      AuthService.storeTokens({
-        access_token: callbackResponse.access_token,
-        refresh_token: callbackResponse.refresh_token,
-        expires_in: callbackResponse.expires_in,
-        token_type: callbackResponse.token_type,
-        scopes: callbackResponse.scopes,
-      });
-
-      // ユーザー名もローカルストレージに保存（トークンリフレッシュ用）
-      localStorage.setItem('username', callbackResponse.user.username);
-
-      setStatus('success');
-
-      // 少し待ってからダッシュボードにリダイレクト
+      // レスポンスに期待するデータがない場合
+      console.log('No social_account in response, treating as error');
+      setError('ソーシャルログインの処理に失敗しました');
+      setStatus('error');
       setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+        navigate('/login');
+      }, 5000);
 
     } catch (error: unknown) {
       console.error('OAuth2 callback failed:', error);
       const errorMessage = getErrorMessage(error, 'ソーシャルログインに失敗しました');
-      setError(errorMessage);
+      
+      // 特定のエラーメッセージに基づいてユーザーフレンドリーなメッセージを表示
+      if (errorMessage.includes('social login user registration not implemented')) {
+        setError('ソーシャルログインでの新規登録は現在実装中です。先にアカウントを作成してからソーシャルアカウントを連携してください。');
+      } else if (errorMessage.includes('user authentication required')) {
+        setError('ソーシャルアカウント連携には、先にログインが必要です。');
+      } else {
+        setError(errorMessage);
+      }
+      
       setStatus('error');
 
       // エラー時は5秒後にログインページにリダイレクト
@@ -63,6 +160,7 @@ const AuthCallback: React.FC = () => {
   };
 
   const renderContent = () => {
+    console.log('AuthCallback rendering with status:', status);
     switch (status) {
       case 'processing':
         return (

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLocation } from 'react-router-dom';
 import { AuthService } from '../services/authService';
 import type { Token } from '../types/auth';
 import SocialAccountsSection from './SocialAccountsSection';
@@ -18,12 +19,14 @@ import {
 
 const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const [tokens, setTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingApiKey, setCreatingApiKey] = useState(false);
   const [apiKeyName, setApiKeyName] = useState('');
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
+  const [socialLinkedKey, setSocialLinkedKey] = useState(0);
 
   useEffect(() => {
     console.log('Dashboard - useEffect, user:', user);
@@ -32,12 +35,27 @@ const Dashboard: React.FC = () => {
     }
   }, [user]);
 
+  useEffect(() => {
+    // ソーシャルアカウント連携後のリフレッシュ
+    const params = new URLSearchParams(location.search);
+    if (params.get('social_linked') === 'true') {
+      console.log('Social account linked, refreshing data');
+      setSocialLinkedKey(prev => prev + 1);
+      // URLパラメータをクリア
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  }, [location]);
+
   const loadTokens = async () => {
-    if (!user) return;
+    if (!user || !user.id) {
+      console.log('Dashboard - loadTokens: user or user.id is missing', { user });
+      return;
+    }
 
     try {
       setLoading(true);
       setError(null);
+      console.log('Dashboard - loadTokens: calling AuthService.listTokens with user.id:', user.id);
       const userTokens = await AuthService.listTokens(user.id);
       
       // 安全な配列アクセス
@@ -54,7 +72,7 @@ const Dashboard: React.FC = () => {
   };
 
   const createApiKey = async () => {
-    if (!user || !apiKeyName.trim()) return;
+    if (!user || !user.id || !apiKeyName.trim()) return;
 
     try {
       setCreatingApiKey(true);
@@ -76,7 +94,7 @@ const Dashboard: React.FC = () => {
   };
 
   const revokeToken = async (tokenId: string) => {
-    if (!user) return;
+    if (!user || !user.id) return;
 
     try {
       await AuthService.revokeToken({
@@ -230,7 +248,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Social Accounts Section */}
-            <SocialAccountsSection />
+            <SocialAccountsSection key={socialLinkedKey} />
           </div>
 
           {/* WebAuthn Credentials Section */}

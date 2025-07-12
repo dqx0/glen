@@ -55,8 +55,11 @@ func main() {
 
 	// ソーシャルログイン（認証不要 - OAuth2フロー）
 	mux.HandleFunc("/api/v1/social/authorize", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToSocialService)))
-	mux.HandleFunc("/api/v1/social/callback", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToSocialService)))
+	mux.HandleFunc("/api/v1/social/login", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToSocialService)))
 	mux.HandleFunc("/api/v1/social/providers", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToSocialService)))
+	
+	// ソーシャルアカウント連携（認証必要）
+	mux.HandleFunc("/api/v1/social/callback", loggingMiddleware.Handle(corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToSocialService))))
 
 	// 認証が必要なエンドポイント
 	// ユーザー情報取得（特定のパス）
@@ -98,6 +101,7 @@ func main() {
 		path := r.URL.Path
 		// 認証不要のパスをチェック
 		if path == "/api/v1/social/authorize" || 
+		   path == "/api/v1/social/login" ||
 		   path == "/api/v1/social/callback" ||
 		   path == "/api/v1/social/providers" {
 			http.NotFound(w, r) // 上記で処理済み

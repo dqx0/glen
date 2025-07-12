@@ -5,6 +5,7 @@ import type {
   AuthorizeResponse,
   CallbackRequest,
   CallbackResponse,
+  SocialLoginResponse,
   ProvidersResponse,
   SocialAccountsResponse,
   UnlinkAccountRequest,
@@ -30,10 +31,19 @@ export class SocialService {
     return response.data;
   }
 
-  // OAuth2コールバック処理
+  // OAuth2コールバック処理（アカウント連携用）
   static async callback(request: CallbackRequest): Promise<CallbackResponse> {
     const response = await apiClient.post<CallbackResponse>(
       `${this.SOCIAL_BASE_URL}/callback`,
+      request
+    );
+    return response.data;
+  }
+
+  // ソーシャルログイン処理
+  static async socialLogin(request: CallbackRequest): Promise<SocialLoginResponse> {
+    const response = await apiClient.post<SocialLoginResponse>(
+      `${this.SOCIAL_BASE_URL}/login`,
       request
     );
     return response.data;
@@ -70,8 +80,12 @@ export class SocialService {
       sessionStorage.setItem('oauth2_provider', provider);
       sessionStorage.setItem('oauth2_redirect_uri', redirectUri);
 
-      // 認証ページにリダイレクト
-      window.location.href = authResponse.authorization_url;
+      // 認証ページにリダイレクト（バックエンドのレスポンス構造に合わせる）
+      const authUrl = authResponse.authorization_url || authResponse.auth_url;
+      if (!authUrl) {
+        throw new Error('Authorization URL not found in response');
+      }
+      window.location.href = authUrl;
     } catch (error) {
       console.error(`Failed to start OAuth2 flow for ${provider}:`, error);
       throw error;
@@ -80,34 +94,46 @@ export class SocialService {
 
   // OAuth2コールバック処理のユーティリティ
   static async handleOAuth2Callback(): Promise<CallbackResponse> {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    const state = urlParams.get('state');
-    const error = urlParams.get('error');
-
-    if (error) {
-      throw new Error(`OAuth2 error: ${error}`);
+    // 重複処理を防ぐ
+    const processingKey = 'oauth2_processing';
+    if (sessionStorage.getItem(processingKey) === 'true') {
+      throw new Error('OAuth2 callback already processing');
     }
-
-    if (!code || !state) {
-      throw new Error('Missing code or state parameter');
-    }
-
-    // 保存されたstateと比較
-    const savedState = sessionStorage.getItem('oauth2_state');
-    const savedProvider = sessionStorage.getItem('oauth2_provider') as SocialProvider;
-    const savedRedirectUri = sessionStorage.getItem('oauth2_redirect_uri');
-
-    if (state !== savedState) {
-      throw new Error('Invalid state parameter');
-    }
-
-    if (!savedProvider || !savedRedirectUri) {
-      throw new Error('Missing OAuth2 session data');
-    }
+    sessionStorage.setItem(processingKey, 'true');
 
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+      const error = urlParams.get('error');
+
+      console.log('OAuth2 callback parameters:', { code, state, error });
+
+      if (error) {
+        throw new Error(`OAuth2 error: ${error}`);
+      }
+
+      if (!code || !state) {
+        throw new Error('Missing code or state parameter');
+      }
+
+      // 保存されたstateと比較
+      const savedState = sessionStorage.getItem('oauth2_state');
+      const savedProvider = sessionStorage.getItem('oauth2_provider') as SocialProvider;
+      const savedRedirectUri = sessionStorage.getItem('oauth2_redirect_uri');
+
+      console.log('Saved OAuth2 data:', { savedState, savedProvider, savedRedirectUri });
+
+      if (state !== savedState) {
+        throw new Error('Invalid state parameter');
+      }
+
+      if (!savedProvider || !savedRedirectUri) {
+        throw new Error('Missing OAuth2 session data');
+      }
+
       // コールバック処理
+      console.log('Calling callback API...');
       const callbackResponse = await this.callback({
         provider: savedProvider,
         code,
@@ -115,10 +141,13 @@ export class SocialService {
         redirect_uri: savedRedirectUri,
       });
 
+      console.log('Callback API response:', callbackResponse);
+
       // セッションデータをクリア
       sessionStorage.removeItem('oauth2_state');
       sessionStorage.removeItem('oauth2_provider');
       sessionStorage.removeItem('oauth2_redirect_uri');
+      sessionStorage.removeItem('oauth2_mode');
 
       return callbackResponse;
     } catch (error) {
@@ -126,12 +155,16 @@ export class SocialService {
       sessionStorage.removeItem('oauth2_state');
       sessionStorage.removeItem('oauth2_provider');
       sessionStorage.removeItem('oauth2_redirect_uri');
+      sessionStorage.removeItem('oauth2_mode');
       throw error;
+    } finally {
+      // 処理完了フラグをクリア
+      sessionStorage.removeItem(processingKey);
     }
   }
 
   // ランダムなstate文字列を生成
-  private static generateState(): string {
+  static generateState(): string {
     const array = new Uint8Array(32);
     crypto.getRandomValues(array);
     return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');

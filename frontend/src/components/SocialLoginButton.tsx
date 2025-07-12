@@ -7,6 +7,7 @@ interface SocialLoginButtonProps {
   onError?: (error: string) => void;
   disabled?: boolean;
   className?: string;
+  mode?: 'login' | 'link'; // ログイン用か連携用かを指定
 }
 
 const SocialLoginButton: React.FC<SocialLoginButtonProps> = ({
@@ -14,6 +15,7 @@ const SocialLoginButton: React.FC<SocialLoginButtonProps> = ({
   onError,
   disabled = false,
   className = '',
+  mode = 'link',
 }) => {
   const [loading, setLoading] = useState(false);
   const providerInfo = SocialService.getProviderInfo(provider);
@@ -23,10 +25,35 @@ const SocialLoginButton: React.FC<SocialLoginButtonProps> = ({
 
     try {
       setLoading(true);
-      await SocialService.startOAuth2Flow(provider);
+      
+      // 同じリダイレクトURIを使用（モードはsessionStorageで判別）
+      const redirectUri = `${window.location.origin}/auth/callback`;
+      
+      // stateにモード情報を含める
+      const state = SocialService.generateState();
+      
+      // 認証URLを取得
+      const authResponse = await SocialService.authorize({
+        provider,
+        redirect_uri: redirectUri,
+        state,
+      });
+
+      // sessionStorageに保存
+      sessionStorage.setItem('oauth2_state', state);
+      sessionStorage.setItem('oauth2_provider', provider);
+      sessionStorage.setItem('oauth2_redirect_uri', redirectUri);
+      sessionStorage.setItem('oauth2_mode', mode);
+
+      // 認証ページにリダイレクト
+      const authUrl = authResponse.authorization_url || authResponse.auth_url;
+      if (!authUrl) {
+        throw new Error('Authorization URL not found in response');
+      }
+      window.location.href = authUrl;
     } catch (error: any) {
-      console.error(`Social login failed for ${provider}:`, error);
-      const errorMessage = error.response?.data?.message || error.message || 'ソーシャルログインに失敗しました';
+      console.error(`Social ${mode} failed for ${provider}:`, error);
+      const errorMessage = error.response?.data?.message || error.message || `ソーシャル${mode === 'login' ? 'ログイン' : '連携'}に失敗しました`;
       onError?.(errorMessage);
     } finally {
       setLoading(false);

@@ -6,11 +6,13 @@ import type { SocialProvider } from '../types/social';
 interface SocialLoginSectionProps {
   onError?: (error: string) => void;
   disabled?: boolean;
+  mode?: 'login' | 'link';
 }
 
 const SocialLoginSection: React.FC<SocialLoginSectionProps> = ({
   onError,
   disabled = false,
+  mode = 'login',
 }) => {
   const [availableProviders, setAvailableProviders] = useState<SocialProvider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +90,7 @@ const SocialLoginSection: React.FC<SocialLoginSectionProps> = ({
             provider={provider}
             onError={onError}
             disabled={disabled}
+            mode={mode}
           />
         ))}
       </div>

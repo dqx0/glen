@@ -421,17 +421,22 @@ func (r *postgresWebAuthnRepository) UpdateCredentialSignCount(ctx context.Conte
 		SET sign_count = $1, updated_at = $2
 		WHERE credential_id = $3`
 
+	fmt.Printf("DEBUG REPO: Executing sign count update - ID: %x, SignCount: %d\n", credentialID, signCount)
 	result, err := r.db.ExecContext(ctx, query, signCount, time.Now(), credentialID)
 	if err != nil {
+		fmt.Printf("ERROR REPO: SQL execution failed: %v\n", err)
 		return NewRepositoryError(ErrRepositoryInternal, "Failed to update sign count", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		fmt.Printf("ERROR REPO: Failed to get rows affected: %v\n", err)
 		return NewRepositoryError(ErrRepositoryInternal, "Failed to get rows affected", err)
 	}
 
+	fmt.Printf("DEBUG REPO: Sign count update affected %d rows\n", rowsAffected)
 	if rowsAffected == 0 {
+		fmt.Printf("ERROR REPO: No rows affected - credential not found with ID: %x\n", credentialID)
 		return NewRepositoryError(ErrRepositoryNotFound, "Credential not found", nil)
 	}
 

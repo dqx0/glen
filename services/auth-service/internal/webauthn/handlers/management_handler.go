@@ -98,6 +98,12 @@ func (h *ManagementHandler) GetMyCredentials(w http.ResponseWriter, r *http.Requ
 	// Convert credentials to a format suitable for frontend
 	credentialList := make([]CredentialInfo, len(credentials))
 	for i, cred := range credentials {
+		var lastUsedAt *string
+		if cred.LastUsedAt != nil {
+			formatted := cred.LastUsedAt.Format(time.RFC3339)
+			lastUsedAt = &formatted
+		}
+		
 		credentialList[i] = CredentialInfo{
 			ID:              cred.ID,
 			CredentialID:    base64.URLEncoding.EncodeToString(cred.CredentialID),
@@ -109,6 +115,7 @@ func (h *ManagementHandler) GetMyCredentials(w http.ResponseWriter, r *http.Requ
 			Name:            cred.Name,
 			CreatedAt:       cred.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:       cred.UpdatedAt.Format(time.RFC3339),
+			LastUsedAt:      lastUsedAt,
 		}
 	}
 
@@ -473,6 +480,7 @@ type CredentialInfo struct {
 	Name            string                            `json:"name"`
 	CreatedAt       string                            `json:"created_at"`
 	UpdatedAt       string                            `json:"updated_at"`
+	LastUsedAt      *string                           `json:"last_used_at,omitempty"`
 }
 
 // GetMyCredentialsResponse represents the response for getting current user's credentials

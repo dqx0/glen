@@ -5,6 +5,7 @@ import type {
   LoginRequest as UserLoginRequest,
   LoginResponse as UserLoginResponse,
   User,
+  UserAPIResponse,
 } from '../types/user';
 
 export class UserService {
@@ -36,8 +37,8 @@ export class UserService {
 
   // ユーザーIDでユーザー情報取得
   static async getUserById(userId: string): Promise<User> {
-    const response = await apiClient.get<User>(`${this.USER_BASE_URL}/${userId}`);
-    return response.data;
+    const response = await apiClient.get<UserAPIResponse>(`${this.USER_BASE_URL}/${userId}`);
+    return response.data.user;
   }
 
   // ローカルストレージからユーザー情報を取得

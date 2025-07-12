@@ -134,9 +134,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     console.log('AuthContext: User state updated');
   };
 
+  const loginWithWebAuthn = async (userId: string): Promise<void> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log('AuthContext: Starting WebAuthn login process...');
+      
+      // まずJWTトークンを発行（WebAuthn認証後なので認証済み状態）
+      const authResponse = await AuthService.login({
+        user_id: userId,
+        username: 'webauthn-user', // 仮のユーザー名（トークン取得後に実際のユーザー名で更新）
+        session_name: 'webauthn-session',
+        scopes: ['read', 'write'],
+      });
+      console.log('AuthContext: JWT token received for WebAuthn');
+
+      // トークンを先に設定（これでAPI認証が通る）
+      AuthService.storeTokens(authResponse);
+      
+      // トークンが設定された状態でユーザー情報を取得
+      const userData = await UserService.getUserById(userId);
+      console.log('AuthContext: User data loaded for WebAuthn:', userData);
+      console.log('AuthContext: User data fields - created_at:', userData.created_at, 'updated_at:', userData.updated_at);
+
+      // ユーザー情報を保存（パスワードログインと同じパターン）
+      setUser(userData);
+      UserService.storeUser(userData);
+      
+      // ユーザー名もローカルストレージに保存
+      localStorage.setItem('username', userData.username);
+      
+      console.log('AuthContext: WebAuthn login complete, user state set to:', userData);
+      
+    } catch (error: any) {
+      console.error('AuthContext: WebAuthn login error details:', error);
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'WebAuthn ログインに失敗しました';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
+      console.log('AuthContext: WebAuthn loading set to false');
+    }
+  };
+
   const value: UserContextType = {
     user,
     login,
+    loginWithWebAuthn,
     register,
     logout,
     refreshUser,
