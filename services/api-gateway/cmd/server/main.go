@@ -110,6 +110,9 @@ func main() {
 		corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToSocialService))(w, r)
 	}))
 
+	// OAuth2関連（認証必要）
+	mux.HandleFunc("/api/v1/oauth2/", loggingMiddleware.Handle(corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService))))
+
 	// サーバー起動
 	port := os.Getenv("PORT")
 	if port == "" {

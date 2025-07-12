@@ -45,6 +45,7 @@ type OAuth2RepositoryInterface interface {
 	// Client operations
 	CreateClient(ctx context.Context, client *models.OAuth2Client) error
 	GetClientByClientID(ctx context.Context, clientID string) (*models.OAuth2Client, error)
+	GetClientByID(ctx context.Context, id string) (*models.OAuth2Client, error)
 	GetClientsByUserID(ctx context.Context, userID string) ([]*models.OAuth2Client, error)
 	DeleteClient(ctx context.Context, clientID, userID string) error
 	
@@ -146,18 +147,23 @@ func (s *OAuth2Service) GetClientsByUserID(ctx context.Context, userID string) (
 }
 
 // DeleteClient deletes a client
-func (s *OAuth2Service) DeleteClient(ctx context.Context, clientID, userID string) error {
-	// Verify client exists and belongs to user
-	client, err := s.repo.GetClientByClientID(ctx, clientID)
+func (s *OAuth2Service) DeleteClient(ctx context.Context, clientIDOrID, userID string) error {
+	// Try to find client by client_id first, then by id
+	client, err := s.repo.GetClientByClientID(ctx, clientIDOrID)
 	if err != nil {
-		return ErrClientNotFound
+		// If not found by client_id, try by id
+		client, err = s.repo.GetClientByID(ctx, clientIDOrID)
+		if err != nil {
+			return ErrClientNotFound
+		}
 	}
 	
 	if client.UserID != userID {
 		return ErrInvalidClient
 	}
 	
-	return s.repo.DeleteClient(ctx, clientID, userID)
+	// Use the actual client_id for deletion
+	return s.repo.DeleteClient(ctx, client.ClientID, userID)
 }
 
 // ValidateClient validates client credentials

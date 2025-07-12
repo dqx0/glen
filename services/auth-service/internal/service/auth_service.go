@@ -57,7 +57,7 @@ type RefreshResponse struct {
 type APIKeyResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
-	Token     string    `json:"token"`
+	APIKey    string    `json:"api_key"`
 	Scopes    []string  `json:"scopes"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -191,7 +191,7 @@ func (s *AuthService) CreateAPIKey(ctx context.Context, userID, name string, sco
 	return &APIKeyResponse{
 		ID:        apiKey.ID,
 		Name:      apiKey.Name,
-		Token:     apiKey.GetPlainToken(),
+		APIKey:    apiKey.GetPlainToken(),
 		Scopes:    apiKey.Scopes,
 		CreatedAt: apiKey.CreatedAt,
 	}, nil

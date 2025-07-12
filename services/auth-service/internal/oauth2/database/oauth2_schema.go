@@ -241,7 +241,7 @@ func ValidateOAuth2Schema(ctx context.Context, db *sql.DB) error {
 	for _, tableName := range requiredTables {
 		var name string
 		err := db.QueryRowContext(ctx, 
-			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", tableName).Scan(&name)
+			"SELECT tablename FROM pg_tables WHERE tablename = $1", tableName).Scan(&name)
 		if err != nil {
 			return fmt.Errorf("required table %s does not exist: %w", tableName, err)
 		}
@@ -258,7 +258,7 @@ func ValidateOAuth2Schema(ctx context.Context, db *sql.DB) error {
 	for _, indexName := range requiredIndexes {
 		var name string
 		err := db.QueryRowContext(ctx, 
-			"SELECT name FROM sqlite_master WHERE type='index' AND name=?", indexName).Scan(&name)
+			"SELECT indexname FROM pg_indexes WHERE indexname = $1", indexName).Scan(&name)
 		if err != nil {
 			return fmt.Errorf("required index %s does not exist: %w", indexName, err)
 		}

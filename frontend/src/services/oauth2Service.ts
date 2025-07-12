@@ -62,72 +62,63 @@ interface TokenResponse {
   scope?: string;
 }
 
+import { apiClient } from '../api/client';
+
 export class OAuth2Service {
   private static baseUrl = '/api/v1/oauth2';
 
-  private static getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('accessToken');
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` }),
-    };
-  }
-
   // Client Management
   static async createClient(request: CreateClientRequest): Promise<CreateClientResponse> {
-    const response = await fetch(`${this.baseUrl}/clients`, {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error_description || error.message || 'Failed to create client');
+    try {
+      const response = await apiClient.post(`${this.baseUrl}/clients`, request);
+      return response.data;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error_description || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          'Failed to create client';
+      throw new Error(errorMessage);
     }
-
-    return response.json();
   }
 
   static async getClients(userId: string): Promise<OAuth2Client[]> {
-    const response = await fetch(`${this.baseUrl}/clients?user_id=${encodeURIComponent(userId)}`, {
-      headers: this.getAuthHeaders(),
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
+    try {
+      const response = await apiClient.get(`${this.baseUrl}/clients?user_id=${encodeURIComponent(userId)}`);
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      if (error.response?.status === 404) {
         return []; // No clients found
       }
-      const error = await response.json();
-      throw new Error(error.error_description || error.message || 'Failed to fetch clients');
+      const errorMessage = error.response?.data?.error_description || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          'Failed to fetch clients';
+      throw new Error(errorMessage);
     }
-
-    const data = await response.json();
-    return Array.isArray(data) ? data : [];
   }
 
   static async getClient(clientId: string): Promise<OAuth2Client> {
-    const response = await fetch(`${this.baseUrl}/clients/${encodeURIComponent(clientId)}`, {
-      headers: this.getAuthHeaders(),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error_description || error.message || 'Failed to fetch client');
+    try {
+      const response = await apiClient.get(`${this.baseUrl}/clients/${encodeURIComponent(clientId)}`);
+      return response.data;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error_description || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          'Failed to fetch client';
+      throw new Error(errorMessage);
     }
-
-    return response.json();
   }
 
   static async deleteClient(clientId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/clients/${encodeURIComponent(clientId)}`, {
-      method: 'DELETE',
-      headers: this.getAuthHeaders(),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error_description || error.message || 'Failed to delete client');
+    try {
+      await apiClient.delete(`${this.baseUrl}/clients/${encodeURIComponent(clientId)}`);
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error_description || 
+                          error.response?.data?.message || 
+                          error.message || 
+                          'Failed to delete client';
+      throw new Error(errorMessage);
     }
   }
 

@@ -31,8 +31,8 @@ func (m *Migrator) Initialize(ctx context.Context) error {
 	query := `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version VARCHAR(255) PRIMARY KEY,
-			name VARCHAR(255) NOT NULL,
-			applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			dirty BOOLEAN NOT NULL DEFAULT FALSE,
+			applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)
 	`
 	
@@ -72,8 +72,8 @@ func (m *Migrator) ApplyMigration(ctx context.Context, migration Migration) erro
 	
 	// Record migration as applied
 	_, err = tx.ExecContext(ctx, 
-		"INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
-		migration.Version, migration.Name, time.Now())
+		"INSERT INTO schema_migrations (version, dirty, applied_at) VALUES ($1, $2, $3)",
+		migration.Version, false, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to record migration %s: %w", migration.Version, err)
 	}
@@ -91,7 +91,7 @@ func (m *Migrator) ApplyMigration(ctx context.Context, migration Migration) erro
 func (m *Migrator) IsMigrationApplied(ctx context.Context, version string) (bool, error) {
 	var count int
 	err := m.db.QueryRowContext(ctx, 
-		"SELECT COUNT(*) FROM schema_migrations WHERE version = ?", version).Scan(&count)
+		"SELECT COUNT(*) FROM schema_migrations WHERE version = $1", version).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -101,7 +101,7 @@ func (m *Migrator) IsMigrationApplied(ctx context.Context, version string) (bool
 // GetAppliedMigrations returns all applied migrations
 func (m *Migrator) GetAppliedMigrations(ctx context.Context) ([]Migration, error) {
 	rows, err := m.db.QueryContext(ctx, 
-		"SELECT version, name, applied_at FROM schema_migrations ORDER BY applied_at")
+		"SELECT version, applied_at FROM schema_migrations ORDER BY applied_at")
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (m *Migrator) GetAppliedMigrations(ctx context.Context) ([]Migration, error
 	var migrations []Migration
 	for rows.Next() {
 		var migration Migration
-		err := rows.Scan(&migration.Version, &migration.Name, &migration.AppliedAt)
+		err := rows.Scan(&migration.Version, &migration.AppliedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -278,7 +278,7 @@ func ValidateWebAuthnSchema(ctx context.Context, db *sql.DB) error {
 	for _, tableName := range requiredTables {
 		var name string
 		err := db.QueryRowContext(ctx, 
-			"SELECT name FROM sqlite_master WHERE type='table' AND name=?", tableName).Scan(&name)
+			"SELECT tablename FROM pg_tables WHERE tablename = $1", tableName).Scan(&name)
 		if err != nil {
 			return fmt.Errorf("required table %s does not exist: %w", tableName, err)
 		}
@@ -295,7 +295,7 @@ func ValidateWebAuthnSchema(ctx context.Context, db *sql.DB) error {
 	for _, indexName := range requiredIndexes {
 		var name string
 		err := db.QueryRowContext(ctx, 
-			"SELECT name FROM sqlite_master WHERE type='index' AND name=?", indexName).Scan(&name)
+			"SELECT indexname FROM pg_indexes WHERE indexname = $1", indexName).Scan(&name)
 		if err != nil {
 			return fmt.Errorf("required index %s does not exist: %w", indexName, err)
 		}
