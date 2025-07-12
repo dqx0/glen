@@ -68,3 +68,5 @@ test_output/
 # Development documentation (internal use)
 *.md
 !README.md
+
+__debug_*

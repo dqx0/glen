@@ -65,6 +65,34 @@ func (s *simpleWebAuthnService) GetUserCredentials(ctx context.Context, userID s
 	return credentials, nil
 }
 
+// GetCredential retrieves a credential by its ID
+func (s *simpleWebAuthnService) GetCredential(ctx context.Context, credentialID []byte) (*models.WebAuthnCredential, error) {
+	if len(credentialID) == 0 {
+		return nil, ErrInvalidRequest("Credential ID is required")
+	}
+
+	credential, err := s.credRepo.GetCredentialByID(ctx, credentialID)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credential", "", err)
+	}
+
+	return credential, nil
+}
+
+// GetCredentialByTableID retrieves a credential by its table ID
+func (s *simpleWebAuthnService) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
+	if id == "" {
+		return nil, ErrInvalidRequest("ID is required")
+	}
+
+	credential, err := s.credRepo.GetCredentialByTableID(ctx, id)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credential", "", err)
+	}
+
+	return credential, nil
+}
+
 // UpdateCredential updates an existing credential
 func (s *simpleWebAuthnService) UpdateCredential(ctx context.Context, credential *models.WebAuthnCredential) error {
 	if credential == nil {

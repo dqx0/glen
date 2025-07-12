@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/dqx0/glen/user-service/internal/models"
 	"github.com/dqx0/glen/user-service/internal/service"
 )
@@ -187,6 +188,47 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 成功レスポンス
+	userResp := UserResponse{
+		ID:            user.ID,
+		Username:      user.Username,
+		Email:         user.Email,
+		EmailVerified: user.EmailVerified,
+		IsActive:      user.IsActive(),
+		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(SuccessResponse{
+		Success: true,
+		User:    userResp,
+	})
+}
+
+// GetUserByID handles requests to get a user by their ID
+func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.writeErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// Extract user ID from URL parameter
+	userID := chi.URLParam(r, "user_id")
+	if userID == "" {
+		h.writeErrorResponse(w, http.StatusBadRequest, "user ID is required")
+		return
+	}
+
+	user, err := h.userService.GetUserByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			h.writeErrorResponse(w, http.StatusNotFound, "user not found")
+			return
+		}
+		h.writeErrorResponse(w, http.StatusInternalServerError, "failed to get user")
+		return
+	}
+
 	userResp := UserResponse{
 		ID:            user.ID,
 		Username:      user.Username,

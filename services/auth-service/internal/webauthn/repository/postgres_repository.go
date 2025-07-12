@@ -50,9 +50,9 @@ func (r *postgresWebAuthnRepository) CreateCredential(ctx context.Context, crede
 	query := `
 		INSERT INTO webauthn_credentials (
 			id, user_id, credential_id, public_key, attestation_type,
-			transport, flags, sign_count, clone_warning, created_at, updated_at
+			transport, flags, sign_count, clone_warning, name, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 		)`
 
 	// Convert transport slice to comma-separated string for storage
@@ -74,6 +74,7 @@ func (r *postgresWebAuthnRepository) CreateCredential(ctx context.Context, crede
 		string(flagsJSON),
 		credential.SignCount,
 		credential.CloneWarning,
+		credential.Name,
 		credential.CreatedAt,
 		credential.UpdatedAt,
 	)
@@ -114,7 +115,7 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 
 	query := `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, created_at, updated_at
+			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE user_id = $1
 		ORDER BY created_at DESC`
@@ -141,6 +142,8 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 			&flagsJSON,
 			&credential.SignCount,
 			&credential.CloneWarning,
+			&credential.Name,
+			&credential.LastUsedAt,
 			&credential.CreatedAt,
 			&credential.UpdatedAt,
 		)
@@ -173,7 +176,7 @@ func (r *postgresWebAuthnRepository) GetCredentialByID(ctx context.Context, cred
 
 	query := `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, created_at, updated_at
+			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE credential_id = $1`
 
@@ -191,6 +194,62 @@ func (r *postgresWebAuthnRepository) GetCredentialByID(ctx context.Context, cred
 		&flagsJSON,
 		&credential.SignCount,
 		&credential.CloneWarning,
+		&credential.Name,
+		&credential.LastUsedAt,
+		&credential.CreatedAt,
+		&credential.UpdatedAt,
+	)
+
+	if err != nil {
+		// Debug logging
+		fmt.Printf("GetCredentialByID error for credential %x: %v\n", credentialID, err)
+	}
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, NewRepositoryError(ErrRepositoryNotFound, "Credential not found", err)
+		}
+		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to get credential", err)
+	}
+
+	// Parse transport string back to slice
+	credential.Transport = models.StringToTransports(transportStr)
+	
+	// Parse flags JSON back to struct
+	if err := json.Unmarshal([]byte(flagsJSON), &credential.Flags); err != nil {
+		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to parse flags", err)
+	}
+
+	return credential, nil
+}
+
+// GetCredentialByTableID retrieves a credential by its table ID (UUID)
+func (r *postgresWebAuthnRepository) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
+	query := `
+		SELECT id, user_id, credential_id, public_key, attestation_type,
+			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
+		FROM webauthn_credentials 
+		WHERE id = $1`
+
+	credential := &models.WebAuthnCredential{}
+	var transportStr string
+	var flagsJSON string
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&credential.ID,
+		&credential.UserID,
+		&credential.CredentialID,
+		&credential.PublicKey,
+		&credential.AttestationType,
+		&transportStr,
+		&flagsJSON,
+		&credential.SignCount,
+		&credential.CloneWarning,
+		&credential.Name,
+		&credential.LastUsedAt,
 		&credential.CreatedAt,
 		&credential.UpdatedAt,
 	)
@@ -202,12 +261,12 @@ func (r *postgresWebAuthnRepository) GetCredentialByID(ctx context.Context, cred
 		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to get credential", err)
 	}
 
-	// Convert transport string back to slice
+	// Parse transport string back to slice
 	credential.Transport = models.StringToTransports(transportStr)
 	
-	// Convert flags JSON back to struct
+	// Parse flags JSON back to struct
 	if err := json.Unmarshal([]byte(flagsJSON), &credential.Flags); err != nil {
-		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to unmarshal flags", err)
+		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to parse flags", err)
 	}
 
 	return credential, nil
@@ -226,8 +285,8 @@ func (r *postgresWebAuthnRepository) UpdateCredential(ctx context.Context, crede
 	query := `
 		UPDATE webauthn_credentials 
 		SET public_key = $1, attestation_type = $2, transport = $3, 
-			flags = $4, sign_count = $5, clone_warning = $6, updated_at = $7
-		WHERE credential_id = $8`
+			flags = $4, sign_count = $5, clone_warning = $6, name = $7, last_used_at = $8, updated_at = $9
+		WHERE credential_id = $10`
 
 	transportStr := models.TransportsToString(credential.Transport)
 	credential.UpdatedAt = time.Now()
@@ -245,6 +304,8 @@ func (r *postgresWebAuthnRepository) UpdateCredential(ctx context.Context, crede
 		string(flagsJSON),
 		credential.SignCount,
 		credential.CloneWarning,
+		credential.Name,
+		credential.LastUsedAt,
 		credential.UpdatedAt,
 		credential.CredentialID,
 	)

@@ -23,6 +23,7 @@ const WebAuthnCredentialsSection: React.FC = () => {
   const [editingName, setEditingName] = useState('');
 
   useEffect(() => {
+    console.log('WebAuthnCredentialsSection: user:', user);
     if (user && isSupported) {
       loadCredentials();
     } else {
@@ -40,7 +41,15 @@ const WebAuthnCredentialsSection: React.FC = () => {
       
       // 安全な配列アクセス
       const credentials = Array.isArray(response?.credentials) ? response.credentials : [];
-      setCredentials(credentials);
+      
+      // transportプロパティが欠けている場合の修正
+      const normalizedCredentials = credentials.map(cred => ({
+        ...cred,
+        transport: Array.isArray(cred.transport) ? cred.transport : []
+      }));
+      
+      console.log('Loaded credentials:', normalizedCredentials);
+      setCredentials(normalizedCredentials);
     } catch (error: any) {
       console.error('Failed to load WebAuthn credentials:', error);
       setError('WebAuthn認証器の読み込みに失敗しました');
@@ -67,7 +76,7 @@ const WebAuthnCredentialsSection: React.FC = () => {
 
     try {
       await WebAuthnService.deleteCredential({ credential_id: credentialId });
-      setCredentials(prev => prev.filter(cred => cred.id !== credentialId));
+      setCredentials(prev => prev.filter(cred => cred.credential_id !== credentialId));
     } catch (error: any) {
       console.error('Failed to delete credential:', error);
       setError('認証器の削除に失敗しました');
@@ -76,7 +85,7 @@ const WebAuthnCredentialsSection: React.FC = () => {
 
   const startEditingCredential = (credential: WebAuthnCredential) => {
     setEditingCredential(credential.id);
-    setEditingName(credential.name);
+    setEditingName(credential.name || '');
   };
 
   const cancelEditingCredential = () => {
@@ -91,19 +100,19 @@ const WebAuthnCredentialsSection: React.FC = () => {
     }
 
     try {
-      const updatedCredential = await WebAuthnService.updateCredential({
+      await WebAuthnService.updateCredential({
         credential_id: credentialId,
         name: editingName.trim(),
       });
 
-      setCredentials(prev => 
-        prev.map(cred => 
-          cred.id === credentialId ? updatedCredential : cred
-        )
-      );
+      // サーバーから最新のクレデンシャル一覧を再取得
+      await loadCredentials();
 
       setEditingCredential(null);
       setEditingName('');
+      
+      // 更新成功をユーザーに伝える
+      console.log('認証器名が正常に更新されました');
     } catch (error: any) {
       console.error('Failed to update credential:', error);
       setError('認証器名の更新に失敗しました');
@@ -236,8 +245,8 @@ const WebAuthnCredentialsSection: React.FC = () => {
           </h4>
           <WebAuthnRegisterButton
             userId={user.id}
-            username={user.username}
-            displayName={user.username}
+            username={user.username || 'unknown'}
+            displayName={user.username || 'Unknown User'}
             onSuccess={handleCredentialRegistered}
             onError={handleRegistrationError}
           />
@@ -302,13 +311,20 @@ const WebAuthnCredentialsSection: React.FC = () => {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     <span style={{ fontSize: '1.5rem', marginRight: '0.5rem' }}>
-                      {WebAuthnService.getAuthenticatorIcon(credential)}
+                      {(() => {
+                        try {
+                          return WebAuthnService.getAuthenticatorIcon(credential);
+                        } catch (error) {
+                          console.error('Error getting authenticator icon:', error);
+                          return '🔐';
+                        }
+                      })()}
                     </span>
                     {editingCredential === credential.id ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <input
                           type="text"
-                          value={editingName}
+                          value={editingName || ''}
                           onChange={(e) => setEditingName(e.target.value)}
                           style={{
                             padding: '0.25rem 0.5rem',
@@ -382,7 +398,14 @@ const WebAuthnCredentialsSection: React.FC = () => {
                   <div>
                     <span style={{ fontWeight: 500 }}>種類:</span>
                     <span style={{ marginLeft: '0.25rem' }}>
-                      {WebAuthnService.getAuthenticatorType(credential)}
+                      {(() => {
+                        try {
+                          return WebAuthnService.getAuthenticatorType(credential);
+                        } catch (error) {
+                          console.error('Error getting authenticator type:', error);
+                          return '不明';
+                        }
+                      })()}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -430,7 +453,7 @@ const WebAuthnCredentialsSection: React.FC = () => {
                     </button>
                   )}
                   <button
-                    onClick={() => handleDeleteCredential(credential.id)}
+                    onClick={() => handleDeleteCredential(credential.credential_id)}
                     disabled={editingCredential === credential.id}
                     style={{
                       display: 'inline-flex',

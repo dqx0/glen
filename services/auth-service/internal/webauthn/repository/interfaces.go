@@ -13,6 +13,7 @@ type WebAuthnRepository interface {
 	CreateCredential(ctx context.Context, credential *models.WebAuthnCredential) error
 	GetCredentialsByUserID(ctx context.Context, userID string) ([]*models.WebAuthnCredential, error)
 	GetCredentialByID(ctx context.Context, credentialID []byte) (*models.WebAuthnCredential, error)
+	GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error)
 	UpdateCredential(ctx context.Context, credential *models.WebAuthnCredential) error
 	DeleteCredential(ctx context.Context, credentialID []byte) error
 	

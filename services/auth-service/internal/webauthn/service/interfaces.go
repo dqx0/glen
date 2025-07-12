@@ -20,6 +20,8 @@ type WebAuthnService interface {
 	
 	// Credential management
 	GetUserCredentials(ctx context.Context, userID string) ([]*models.WebAuthnCredential, error)
+	GetCredential(ctx context.Context, credentialID []byte) (*models.WebAuthnCredential, error)
+	GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error)
 	UpdateCredential(ctx context.Context, credential *models.WebAuthnCredential) error
 	DeleteCredential(ctx context.Context, userID string, credentialID []byte) error
 	
@@ -129,6 +131,7 @@ type RegistrationFinishRequest struct {
 	SessionID         string                                    `json:"session_id" validate:"required"`
 	AttestationResponse *models.AuthenticatorAttestationResponse `json:"response" validate:"required"`
 	ClientExtensions  map[string]interface{}                    `json:"client_extensions,omitempty"`
+	CredentialName    string                                    `json:"credential_name,omitempty"`
 }
 
 // RegistrationResult represents the result of a registration ceremony

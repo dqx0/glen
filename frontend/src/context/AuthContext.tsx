@@ -39,14 +39,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const loadUserData = async () => {
     try {
+      console.log('AuthContext: loadUserData() called');
       const userData = await UserService.getUser();
+      console.log('AuthContext: User data loaded:', userData);
       setUser(userData);
       UserService.storeUser(userData);
+      console.log('AuthContext: User state set and stored');
     } catch (error) {
-      console.error('Failed to load user data:', error);
+      console.error('AuthContext: Failed to load user data:', error);
       // エラーの場合、ローカルデータをクリア
       AuthService.clearTokens();
       UserService.clearUser();
+      console.log('AuthContext: Cleared tokens and user data due to error');
     }
   };
 
@@ -119,7 +123,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const refreshUser = async () => {
+    console.log('AuthContext: refreshUser() called');
     await loadUserData();
+    console.log('AuthContext: refreshUser() completed, current user:', user);
+  };
+
+  const setUserData = (userData: User) => {
+    console.log('AuthContext: setUserData() called with:', userData);
+    setUser(userData);
+    console.log('AuthContext: User state updated');
   };
 
   const value: UserContextType = {
@@ -128,6 +140,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     refreshUser,
+    setUserData,
     loading,
     error,
   };

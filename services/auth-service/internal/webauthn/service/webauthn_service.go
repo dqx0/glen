@@ -186,8 +186,14 @@ func (s *webAuthnService) convertToWebAuthnCredential(cred *models.WebAuthnCrede
 }
 
 // convertFromWebAuthnCredential converts webauthn.Credential to models.WebAuthnCredential
-func (s *webAuthnService) convertFromWebAuthnCredential(userID string, cred *webauthn.Credential) *models.WebAuthnCredential {
+func (s *webAuthnService) convertFromWebAuthnCredential(userID string, cred *webauthn.Credential, credentialName string) *models.WebAuthnCredential {
 	now := time.Now()
+	
+	// Use provided name or default
+	name := credentialName
+	if name == "" {
+		name = "Security Key"
+	}
 	
 	return &models.WebAuthnCredential{
 		ID:              uuid.New().String(),
@@ -204,6 +210,7 @@ func (s *webAuthnService) convertFromWebAuthnCredential(userID string, cred *web
 		},
 		SignCount:    cred.Authenticator.SignCount,
 		CloneWarning: cred.Authenticator.CloneWarning,
+		Name:         name,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -554,7 +561,7 @@ func (s *webAuthnService) FinishRegistration(ctx context.Context, req *Registrat
 	}
 
 	// Convert and store the credential
-	dbCredential := s.convertFromWebAuthnCredential(sessionData.UserID, credential)
+	dbCredential := s.convertFromWebAuthnCredential(sessionData.UserID, credential, req.CredentialName)
 	
 	// Set transport information if available
 	if req.AttestationResponse.Response.Transports != nil {
@@ -879,9 +886,12 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 		}, nil
 	}
 
-	// Update credential with new sign count
+	// Update credential with new sign count and last used time
+	now := time.Now()
+	fmt.Printf("DEBUG: Updating credential - Current SignCount: %d, New SignCount: %d\n", dbCredential.SignCount, credential.Authenticator.SignCount)
 	dbCredential.SignCount = credential.Authenticator.SignCount
-	dbCredential.UpdatedAt = time.Now()
+	dbCredential.LastUsedAt = &now
+	dbCredential.UpdatedAt = now
 	
 	if err := s.credRepo.UpdateCredential(ctx, dbCredential); err != nil {
 		// Don't fail authentication for update error, but log warning
@@ -920,6 +930,32 @@ func (s *webAuthnService) GetUserCredentials(ctx context.Context, userID string)
 	}
 
 	return credentials, nil
+}
+
+func (s *webAuthnService) GetCredential(ctx context.Context, credentialID []byte) (*models.WebAuthnCredential, error) {
+	if len(credentialID) == 0 {
+		return nil, ErrInvalidRequest("Credential ID is required")
+	}
+
+	credential, err := s.credRepo.GetCredentialByID(ctx, credentialID)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credential", "", err)
+	}
+
+	return credential, nil
+}
+
+func (s *webAuthnService) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
+	if id == "" {
+		return nil, ErrInvalidRequest("ID is required")
+	}
+
+	credential, err := s.credRepo.GetCredentialByTableID(ctx, id)
+	if err != nil {
+		return nil, NewServiceErrorWithCause(ErrServiceDependency, "Failed to get credential", "", err)
+	}
+
+	return credential, nil
 }
 
 func (s *webAuthnService) UpdateCredential(ctx context.Context, credential *models.WebAuthnCredential) error {

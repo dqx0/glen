@@ -96,6 +96,7 @@ export class WebAuthnService {
       const finishResponse = await this.finishRegistration({
         session_id: startResponse.session_id,
         response: this.serializeCredentialForRegistration(credential),
+        credential_name: credentialName,
       });
 
       if (!finishResponse.success) {
@@ -367,9 +368,13 @@ export class WebAuthnService {
 
   // 認証器の種類を判定
   static getAuthenticatorType(credential: WebAuthnCredential): string {
-    if (credential.transport.includes('internal')) {
+    // transport が存在しない場合のフォールバック
+    const transport = credential.transport || [];
+    const transportArray = Array.isArray(transport) ? transport : [transport];
+    
+    if (transportArray.includes('internal')) {
       return 'プラットフォーム認証器';
-    } else if (credential.transport.some(t => ['usb', 'nfc', 'ble'].includes(t))) {
+    } else if (transportArray.some(t => ['usb', 'nfc', 'ble'].includes(t))) {
       return 'ローミング認証器';
     }
     return '不明';
@@ -377,13 +382,17 @@ export class WebAuthnService {
 
   // 認証器のアイコンを取得
   static getAuthenticatorIcon(credential: WebAuthnCredential): string {
-    if (credential.transport.includes('internal')) {
+    // transport が存在しない場合のフォールバック
+    const transport = credential.transport || [];
+    const transportArray = Array.isArray(transport) ? transport : [transport];
+    
+    if (transportArray.includes('internal')) {
       return '📱'; // プラットフォーム認証器（Touch ID、Face ID等）
-    } else if (credential.transport.includes('usb')) {
+    } else if (transportArray.includes('usb')) {
       return '🔑'; // USBセキュリティキー
-    } else if (credential.transport.includes('nfc')) {
+    } else if (transportArray.includes('nfc')) {
       return '📡'; // NFC
-    } else if (credential.transport.includes('ble')) {
+    } else if (transportArray.includes('ble')) {
       return '📶'; // Bluetooth
     }
     return '🔐'; // 汎用

@@ -34,6 +34,12 @@ export class UserService {
     return response.data;
   }
 
+  // ユーザーIDでユーザー情報取得
+  static async getUserById(userId: string): Promise<User> {
+    const response = await apiClient.get<User>(`${this.USER_BASE_URL}/${userId}`);
+    return response.data;
+  }
+
   // ローカルストレージからユーザー情報を取得
   static getStoredUser(): User | null {
     const userStr = localStorage.getItem('user');

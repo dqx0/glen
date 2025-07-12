@@ -106,6 +106,7 @@ func (h *ManagementHandler) GetMyCredentials(w http.ResponseWriter, r *http.Requ
 			Flags:           cred.Flags,
 			SignCount:       cred.SignCount,
 			CloneWarning:    cred.CloneWarning,
+			Name:            cred.Name,
 			CreatedAt:       cred.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:       cred.UpdatedAt.Format(time.RFC3339),
 		}
@@ -136,16 +137,30 @@ func (h *ManagementHandler) DeleteMyCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Decode base64 credential ID
-	decodedCredentialID, err := base64.URLEncoding.DecodeString(credentialID)
+	// Try to use credentialID as UUID first (table ID), then as base64 encoded credential_id
+	var credential *models.WebAuthnCredential
+	var err error
+	
+	// First try to get by table ID (UUID)
+	credential, err = h.webAuthnService.GetCredentialByTableID(r.Context(), credentialID)
 	if err != nil {
-		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid credential ID format", err.Error())
-		return
+		// If not found, try base64 decode and search by credential_id
+		decodedCredentialID, decodeErr := base64.URLEncoding.DecodeString(credentialID)
+		if decodeErr != nil {
+			writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid credential ID format", decodeErr.Error())
+			return
+		}
+		
+		credential, err = h.webAuthnService.GetCredential(r.Context(), decodedCredentialID)
+		if err != nil {
+			h.handleServiceError(w, err)
+			return
+		}
 	}
 
-	err = h.webAuthnService.DeleteCredential(r.Context(), userID, decodedCredentialID)
+	err = h.webAuthnService.DeleteCredential(r.Context(), userID, credential.CredentialID)
 	if err != nil {
-		handleWebAuthnServiceError(w, err)
+		h.handleServiceError(w, err)
 		return
 	}
 
@@ -455,6 +470,7 @@ type CredentialInfo struct {
 	Flags           models.AuthenticatorFlags        `json:"flags"`
 	SignCount       uint32                            `json:"sign_count"`
 	CloneWarning    bool                              `json:"clone_warning"`
+	Name            string                            `json:"name"`
 	CreatedAt       string                            `json:"created_at"`
 	UpdatedAt       string                            `json:"updated_at"`
 }

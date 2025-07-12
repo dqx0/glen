@@ -296,6 +296,12 @@ func parseRegistrationFinishRequest(r *http.Request) (*service.RegistrationFinis
 		return nil, fmt.Errorf("missing or invalid session_id")
 	}
 
+	// Parse credential name (optional)
+	var credentialName string
+	if name, exists := data["credential_name"].(string); exists {
+		credentialName = name
+	}
+
 	// Parse attestation response
 	responseData, ok := data["response"].(map[string]interface{})
 	if !ok {
@@ -317,6 +323,7 @@ func parseRegistrationFinishRequest(r *http.Request) (*service.RegistrationFinis
 		SessionID:         sessionID,
 		AttestationResponse: attestationResponse,
 		ClientExtensions:  clientExtensions,
+		CredentialName:    credentialName,
 	}, nil
 }
 

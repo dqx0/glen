@@ -72,6 +72,7 @@ export interface RegistrationFinishRequest {
     };
   };
   client_extensions?: Record<string, any>;
+  credential_name?: string;
 }
 
 export interface RegistrationFinishResponse {

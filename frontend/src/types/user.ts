@@ -35,6 +35,7 @@ export interface UserContextType {
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  setUserData: (userData: User) => void;
   loading: boolean;
   error: string | null;
 }
