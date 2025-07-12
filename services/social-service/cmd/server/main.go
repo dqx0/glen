@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -23,9 +24,15 @@ func main() {
 	// OAuth2設定の読み込み
 	oauth2Configs := loadOAuth2Configs()
 
+	// User serviceのURLを取得
+	userServiceURL := os.Getenv("USER_SERVICE_URL")
+	if userServiceURL == "" {
+		userServiceURL = "http://localhost:8081" // デフォルトのuser-service URL
+	}
+
 	// 依存関係の構築
 	socialRepo := repository.NewSocialAccountRepository(db)
-	socialHandler := handlers.NewSocialHandler(socialRepo, oauth2Configs)
+	socialHandler := handlers.NewSocialHandler(socialRepo, oauth2Configs, userServiceURL)
 
 	// ルーターの設定
 	mux := http.NewServeMux()
@@ -42,6 +49,47 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("social OK"))
+	})
+
+	// デバッグ用：test-user-idのソーシャルアカウントを削除
+	mux.HandleFunc("/debug/clear-test-user", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		
+		err := socialRepo.DeleteByUserID(r.Context(), "test-user-id")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to delete: %v", err), http.StatusInternalServerError)
+			return
+		}
+		
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("test-user-id social accounts deleted"))
+	})
+
+	// デバッグ用：GoogleプロバイダーIDのソーシャルアカウントを削除
+	mux.HandleFunc("/debug/clear-google-account", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		
+		// 実際のGoogleプロバイダーIDで削除
+		account, err := socialRepo.GetByProviderAndProviderID(r.Context(), "google", "102745493108574627406")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Account not found: %v", err), http.StatusNotFound)
+			return
+		}
+		
+		err = socialRepo.Delete(r.Context(), account.ID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to delete: %v", err), http.StatusInternalServerError)
+			return
+		}
+		
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Google social account deleted"))
 	})
 
 	// サーバー起動

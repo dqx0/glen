@@ -10,7 +10,7 @@ const AuthCallback: React.FC = () => {
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { user, refreshUser } = useAuth();
+  const { user, setUserData } = useAuth();
   const hasProcessed = useRef(false);
 
   useEffect(() => {
@@ -64,10 +64,10 @@ const AuthCallback: React.FC = () => {
         
         console.log('Social login response:', socialLoginResponse);
         
-        // まずダミーのユーザー名でJWTトークンを発行
+        // まず仮のユーザー名でJWTトークンを発行（認証のため）
         const authResponse = await AuthService.login({
           user_id: socialLoginResponse.user_id,
-          username: 'social-user', // 仮のユーザー名
+          username: 'temp-user', // 一時的なユーザー名
           session_name: 'social-session',
           scopes: ['read', 'write'],
         });
@@ -84,6 +84,9 @@ const AuthCallback: React.FC = () => {
         // ユーザー情報を保存
         UserService.storeUser(userData);
         localStorage.setItem('username', userData.username);
+        
+        // AuthContextの状態を直接更新（重複API呼び出しを避ける）
+        setUserData(userData);
         
         setStatus('success');
         setTimeout(() => {

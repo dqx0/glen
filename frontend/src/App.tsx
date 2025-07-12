@@ -4,6 +4,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import AuthCallback from './components/AuthCallback';
+import OAuth2Authorize from './components/OAuth2Authorize';
 import PrivateRoute from './components/PrivateRoute';
 import './App.css';
 
@@ -16,6 +17,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/oauth/authorize" element={<OAuth2Authorize />} />
             <Route
               path="/dashboard"
               element={

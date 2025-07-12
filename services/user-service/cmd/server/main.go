@@ -47,6 +47,7 @@ func main() {
 		r.Post("/users/login", userHandler.Login)
 		r.Get("/users", userHandler.GetUser)
 		r.Get("/users/{user_id}", userHandler.GetUserByID)
+		r.Get("/users/email/{email}", userHandler.GetUserByEmail)
 		
 	})
 

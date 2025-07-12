@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
@@ -89,12 +91,49 @@ func (a *AuthMiddleware) validateJWTToken(token string) bool {
 	return true
 }
 
-// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出する（簡易版）
+// JWTPayload はJWTのペイロード構造
+type JWTPayload struct {
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	Exp      int64  `json:"exp"`
+}
+
+// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出する
 func extractUserIDFromJWT(token string) string {
-	// 実際の実装では適切なJWTライブラリを使用してください
-	// ここでは開発用として固定値を返す
-	// TODO: 適切なJWT検証とユーザーID抽出を実装
-	return "test-user-id"
+	// JWTは3つの部分に分かれている: header.payload.signature
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		log.Printf("Invalid JWT format: expected 3 parts, got %d", len(parts))
+		return ""
+	}
+
+	// ペイロード部分をデコード
+	payload := parts[1]
+	
+	// Base64のパディングを修正
+	switch len(payload) % 4 {
+	case 2:
+		payload += "=="
+	case 3:
+		payload += "="
+	}
+
+	// Base64デコード
+	payloadBytes, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		log.Printf("Failed to decode JWT payload: %v", err)
+		return ""
+	}
+
+	// JSONをパース
+	var jwtPayload JWTPayload
+	if err := json.Unmarshal(payloadBytes, &jwtPayload); err != nil {
+		log.Printf("Failed to parse JWT payload: %v", err)
+		return ""
+	}
+
+	log.Printf("Extracted user_id from JWT: %s", jwtPayload.UserID)
+	return jwtPayload.UserID
 }
 
 // validateAPIKey はAPIキーを検証する

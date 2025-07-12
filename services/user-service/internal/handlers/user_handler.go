@@ -21,6 +21,7 @@ type UserServiceInterface interface {
 	Login(ctx context.Context, username, password string) (*models.User, error)
 	GetUser(ctx context.Context, username string) (*models.User, error)
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	UpdatePassword(ctx context.Context, username, newPassword string) error
 	VerifyEmail(ctx context.Context, username string) error
 }
@@ -224,6 +225,48 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := h.userService.GetUserByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			h.writeErrorResponse(w, http.StatusNotFound, "user not found")
+			return
+		}
+		h.writeErrorResponse(w, http.StatusInternalServerError, "failed to get user")
+		return
+	}
+
+	userResp := UserResponse{
+		ID:            user.ID,
+		Username:      user.Username,
+		Email:         user.Email,
+		EmailVerified: user.EmailVerified,
+		IsActive:      user.IsActive(),
+		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(SuccessResponse{
+		Success: true,
+		User:    userResp,
+	})
+}
+
+// GetUserByEmail handles requests to get a user by their email address
+func (h *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.writeErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// Extract email from URL parameter
+	email := chi.URLParam(r, "email")
+	if email == "" {
+		h.writeErrorResponse(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	user, err := h.userService.GetUserByEmail(r.Context(), email)
 	if err != nil {
 		if errors.Is(err, service.ErrUserNotFound) {
 			h.writeErrorResponse(w, http.StatusNotFound, "user not found")

@@ -123,6 +123,19 @@ func (s *UserService) GetUserByID(ctx context.Context, id string) (*models.User,
 	return user, nil
 }
 
+// GetUserByEmail はメールアドレスでユーザーを取得する
+func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
+	}
+
+	return user, nil
+}
+
 // UpdatePassword はユーザーのパスワードを更新する
 func (s *UserService) UpdatePassword(ctx context.Context, username, newPassword string) error {
 	user, err := s.userRepo.GetByUsername(ctx, username)

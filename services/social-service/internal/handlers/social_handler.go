@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dqx0/glen/social-service/internal/models"
 	"github.com/dqx0/glen/social-service/internal/service"
@@ -25,15 +27,17 @@ type SocialAccountRepository interface {
 
 // SocialHandler はソーシャルログイン関連のHTTPハンドラーを提供する
 type SocialHandler struct {
-	repo        SocialAccountRepository
-	oauth2Configs map[string]*models.OAuth2Config
+	repo           SocialAccountRepository
+	oauth2Configs  map[string]*models.OAuth2Config
+	userServiceURL string
 }
 
 // NewSocialHandler は新しいSocialHandlerを作成する
-func NewSocialHandler(repo SocialAccountRepository, oauth2Configs map[string]*models.OAuth2Config) *SocialHandler {
+func NewSocialHandler(repo SocialAccountRepository, oauth2Configs map[string]*models.OAuth2Config, userServiceURL string) *SocialHandler {
 	return &SocialHandler{
-		repo:          repo,
-		oauth2Configs: oauth2Configs,
+		repo:           repo,
+		oauth2Configs:  oauth2Configs,
+		userServiceURL: userServiceURL,
 	}
 }
 
@@ -70,6 +74,20 @@ type SocialLoginResponse struct {
 	UserID        string                `json:"user_id"`
 	SocialAccount *models.SocialAccount `json:"social_account"`
 	IsNewUser     bool                  `json:"is_new_user"`
+}
+
+// UserServiceResponse はuser-serviceからのレスポンス
+type UserServiceResponse struct {
+	Success bool        `json:"success"`
+	User    interface{} `json:"user"`
+	Error   string      `json:"error"`
+}
+
+// CreateUserRequest は新規ユーザー作成のリクエスト
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 // LinkAccountRequest はアカウント連携のリクエスト
@@ -182,18 +200,35 @@ func (h *SocialHandler) HandleSocialLogin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	fmt.Printf("DEBUG: UserInfo from Google: %+v\n", userInfo)
+
 	// プロバイダーIDの抽出
 	providerID, err := extractProviderID(req.Provider, userInfo)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to extract provider ID: %v", err))
 		return
 	}
+	
+	fmt.Printf("DEBUG: Provider ID extracted: %s\n", providerID)
 
 	// 既存のソーシャルアカウントを確認
 	existingAccount, err := h.repo.GetByProviderAndProviderID(r.Context(), req.Provider, providerID)
 	if err != nil {
-		// アカウントが見つからない場合は新規ユーザー作成が必要
-		writeErrorResponse(w, http.StatusNotFound, "social account not found - please register first or link your account")
+		// アカウントが見つからない場合は自動的にユーザーを作成または紐づけ
+		userID, socialAccount, err := h.handleNewSocialLogin(r.Context(), req.Provider, providerID, userInfo)
+		if err != nil {
+			writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("failed to handle new social login: %v", err))
+			return
+		}
+		
+		email, _ := extractEmail(userInfo)
+		fmt.Printf("DEBUG: New social login - userID: %s, email: %s\n", userID, email)
+		resp := SocialLoginResponse{
+			UserID:        userID,
+			SocialAccount: socialAccount,
+			IsNewUser:     true,
+		}
+		writeJSONResponse(w, http.StatusOK, resp)
 		return
 	}
 
@@ -207,6 +242,7 @@ func (h *SocialHandler) HandleSocialLogin(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	fmt.Printf("DEBUG: Existing social login - userID: %s\n", existingAccount.UserID)
 	resp := SocialLoginResponse{
 		UserID:        existingAccount.UserID,
 		SocialAccount: existingAccount,
@@ -572,4 +608,160 @@ func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 		"error":   message,
 	}
 	writeJSONResponse(w, statusCode, response)
+}
+
+// handleNewSocialLogin は新しいソーシャルログインを処理する
+func (h *SocialHandler) handleNewSocialLogin(ctx context.Context, provider, providerID string, userInfo map[string]interface{}) (string, *models.SocialAccount, error) {
+	// メールアドレスを取得
+	email, hasEmail := extractEmail(userInfo)
+	if !hasEmail {
+		return "", nil, fmt.Errorf("email not provided by %s", provider)
+	}
+
+	// メールアドレスで既存ユーザーを検索
+	existingUserID, err := h.findUserByEmail(ctx, email)
+	var userID string
+
+	if err != nil || existingUserID == "" {
+		// 既存ユーザーが見つからない場合は新規作成
+		username := h.generateUsernameFromEmail(email)
+		userID, err = h.createUser(ctx, username, email)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to create user: %v", err)
+		}
+	} else {
+		// 既存ユーザーを使用
+		userID = existingUserID
+	}
+
+	// ソーシャルアカウントを作成
+	displayName, _ := extractDisplayName(provider, userInfo)
+	socialAccount, err := models.NewSocialAccount(
+		userID,
+		provider,
+		providerID,
+		email,
+		displayName,
+		userInfo,
+	)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create social account: %v", err)
+	}
+
+	// ソーシャルアカウントを保存
+	if err := h.repo.Create(ctx, socialAccount); err != nil {
+		return "", nil, fmt.Errorf("failed to save social account: %v", err)
+	}
+
+	return userID, socialAccount, nil
+}
+
+// findUserByEmail はメールアドレスでユーザーを検索する
+func (h *SocialHandler) findUserByEmail(ctx context.Context, email string) (string, error) {
+	// user-serviceのAPIエンドポイントを呼び出し
+	url := fmt.Sprintf("%s/api/v1/users/email/%s", h.userServiceURL, email)
+	fmt.Printf("DEBUG: Looking for user by email: %s, URL: %s\n", email, url)
+	
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil // ユーザーが見つからない（エラーではない）
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("user service returned status %d", resp.StatusCode)
+	}
+
+	var response UserServiceResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", err
+	}
+
+	if !response.Success {
+		return "", fmt.Errorf("user service error: %s", response.Error)
+	}
+
+	// ユーザーIDを抽出
+	if userMap, ok := response.User.(map[string]interface{}); ok {
+		if id, ok := userMap["id"].(string); ok {
+			return id, nil
+		}
+	}
+
+	return "", fmt.Errorf("invalid user response format")
+}
+
+// createUser は新規ユーザーを作成する
+func (h *SocialHandler) createUser(ctx context.Context, username, email string) (string, error) {
+	// user-serviceのAPIエンドポイントを呼び出し
+	url := fmt.Sprintf("%s/api/v1/users/register", h.userServiceURL)
+	fmt.Printf("DEBUG: Creating new user - username: %s, email: %s, URL: %s\n", username, email, url)
+	
+	// ランダムパスワードを生成（ソーシャルログインなので使用されない）
+	password := fmt.Sprintf("social_%d", time.Now().Unix())
+	
+	requestBody := CreateUserRequest{
+		Username: username,
+		Email:    email,
+		Password: password, // ソーシャルログイン用のダミーパスワード
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("user service returned status %d", resp.StatusCode)
+	}
+
+	var response UserServiceResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", err
+	}
+
+	if !response.Success {
+		return "", fmt.Errorf("user service error: %s", response.Error)
+	}
+
+	// ユーザーIDを抽出
+	if userMap, ok := response.User.(map[string]interface{}); ok {
+		if id, ok := userMap["id"].(string); ok {
+			return id, nil
+		}
+	}
+
+	return "", fmt.Errorf("invalid user creation response format")
+}
+
+// generateUsernameFromEmail はメールアドレスからユーザー名を生成する
+func (h *SocialHandler) generateUsernameFromEmail(email string) string {
+	parts := strings.Split(email, "@")
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return "user"
 }

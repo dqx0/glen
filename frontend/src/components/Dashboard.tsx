@@ -5,6 +5,7 @@ import { AuthService } from '../services/authService';
 import type { Token } from '../types/auth';
 import SocialAccountsSection from './SocialAccountsSection';
 import WebAuthnCredentialsSection from './WebAuthnCredentialsSection';
+import OAuth2ClientsSection from './OAuth2ClientsSection';
 import { getErrorMessage } from '../utils/errorUtils';
 import { 
   KeyIcon, 
@@ -253,6 +254,9 @@ const Dashboard: React.FC = () => {
 
           {/* WebAuthn Credentials Section */}
           <WebAuthnCredentialsSection />
+
+          {/* OAuth2 Clients Section */}
+          <OAuth2ClientsSection />
 
           {/* Token Management */}
           <div style={{ 

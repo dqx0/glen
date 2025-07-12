@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -18,6 +19,12 @@ import (
 	"github.com/dqx0/glen/auth-service/internal/webauthn"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/config"
 	webauthnMiddleware "github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
+	
+	// OAuth2 imports
+	oauth2Database "github.com/dqx0/glen/auth-service/internal/oauth2/database"
+	oauth2Handlers "github.com/dqx0/glen/auth-service/internal/oauth2/handlers"
+	oauth2Repository "github.com/dqx0/glen/auth-service/internal/oauth2/repository"
+	oauth2Service "github.com/dqx0/glen/auth-service/internal/oauth2/service"
 )
 
 func main() {
@@ -75,9 +82,22 @@ func main() {
 		log.Printf("Warning: Failed to create WebAuthn tables: %v", err)
 	}
 
+	// OAuth2 database migration
+	ctx := context.Background()
+	if err := oauth2Database.ApplyAllOAuth2Migrations(ctx, db); err != nil {
+		log.Printf("Warning: Failed to apply OAuth2 migrations: %v", err)
+	} else {
+		log.Println("OAuth2 database migrations applied successfully")
+	}
+
 	// WebAuthn JWT設定で新しいハンドラーを作成
 	webAuthnJWTConfig := webauthnMiddleware.NewJWTConfig(jwtService)
 	webAuthnHandler := webauthn.NewWebAuthnHandlerWithJWT(webAuthnModule.Service, webAuthnJWTConfig)
+
+	// OAuth2 dependencies
+	oauth2Repo := oauth2Repository.NewOAuth2Repository(db)
+	oauth2Svc := oauth2Service.NewOAuth2Service(oauth2Repo)
+	oauth2Handler := oauth2Handlers.NewOAuth2Handler(oauth2Svc)
 
 	// Chi ルーターの設定
 	r := chi.NewRouter()
@@ -104,6 +124,21 @@ func main() {
 
 		// WebAuthnエンドポイント
 		webAuthnHandler.RegisterRoutes(r)
+
+		// OAuth2エンドポイント
+		r.Route("/oauth2", func(r chi.Router) {
+			r.Get("/authorize", oauth2Handler.Authorize)
+			r.Post("/authorize", oauth2Handler.Authorize)
+			r.Post("/token", oauth2Handler.Token)
+			r.Post("/revoke", oauth2Handler.Revoke)
+			r.Post("/introspect", oauth2Handler.Introspect)
+			
+			// Client management
+			r.Post("/clients", oauth2Handler.CreateClient)
+			r.Get("/clients", oauth2Handler.GetClients)
+			r.Get("/clients/*", oauth2Handler.GetClient)
+			r.Delete("/clients/*", oauth2Handler.DeleteClient)
+		})
 	})
 
 	// ヘルスチェック
