@@ -51,7 +51,6 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 			
 			// API KeyからユーザーIDを取得してヘッダーに設定
 			if userID := a.extractUserIDFromAPIKey(apiKey); userID != "" {
-				log.Printf("Auth Middleware: Setting X-User-ID from API Key: %s", userID)
 				r.Header.Set("X-User-ID", userID)
 			}
 		} else {
@@ -66,17 +65,8 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 		// ユーザーIDをヘッダーに設定（プロキシ用）
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			token := authHeader[7:]
-			log.Printf("Auth Middleware: Processing Bearer token for request: %s %s", r.Method, r.URL.Path)
-			tokenPreview := token
-			if len(token) > 20 {
-				tokenPreview = token[:20]
-			}
-			log.Printf("Auth Middleware: Extracting user ID from token: %s...", tokenPreview)
 			if userID := a.extractUserIDFromToken(token); userID != "" {
-				log.Printf("Auth Middleware: Setting X-User-ID header: %s for request: %s %s", userID, r.Method, r.URL.Path)
 				r.Header.Set("X-User-ID", userID)
-			} else {
-				log.Printf("Auth Middleware: Failed to extract user ID from token for request: %s %s", r.Method, r.URL.Path)
 			}
 		}
 		

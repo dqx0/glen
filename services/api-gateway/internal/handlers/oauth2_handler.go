@@ -86,7 +86,6 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 			if frontendUserID := h.extractUserIDFromJWT(token); frontendUserID != "" {
 				userID = frontendUserID
-				log.Printf("OAuth2 Gateway: Using user ID from Authorization header: %s", userID)
 			}
 		}
 		
@@ -124,11 +123,8 @@ func (h *OAuth2Handler) getUserIDFromSession(r *http.Request) string {
 	// まずクエリパラメータからauth_tokenをチェック（OAuth2ログイン後）
 	authToken := r.URL.Query().Get("auth_token")
 	if authToken != "" {
-		log.Printf("OAuth2 Gateway: Found auth_token in query params: %s...", authToken[:20])
-		
 		// JWT トークンの場合は、デコードしてユーザーIDを取得する
 		if userID := h.extractUserIDFromJWT(authToken); userID != "" {
-			log.Printf("OAuth2 Gateway: Extracted user ID from JWT: %s", userID)
 			return userID
 		}
 		
@@ -137,7 +133,6 @@ func (h *OAuth2Handler) getUserIDFromSession(r *http.Request) string {
 			parts := strings.Split(authToken, "_")
 			if len(parts) >= 3 {
 				userID := "user_" + parts[2]
-				log.Printf("OAuth2 Gateway: Extracted user ID from auth_token: %s", userID)
 				return userID
 			}
 		}
@@ -147,14 +142,17 @@ func (h *OAuth2Handler) getUserIDFromSession(r *http.Request) string {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		log.Printf("OAuth2 Gateway: Found Authorization header with token")
+		
+		// JWT トークンの場合は、デコードしてユーザーIDを取得する
+		if userID := h.extractUserIDFromJWT(token); userID != "" {
+			return userID
+		}
 		
 		// トークンからユーザーIDを抽出（簡単な形式: "session_user_username_username"）
 		if strings.HasPrefix(token, "session_user_") {
 			parts := strings.Split(token, "_")
 			if len(parts) >= 3 {
 				userID := "user_" + parts[2]
-				log.Printf("OAuth2 Gateway: Extracted user ID from token: %s", userID)
 				return userID
 			}
 		}
@@ -163,8 +161,12 @@ func (h *OAuth2Handler) getUserIDFromSession(r *http.Request) string {
 	// 次にglen_sessionクッキーをチェック
 	cookie, err := r.Cookie("glen_session")
 	if err != nil {
-		log.Printf("OAuth2 Gateway: No glen_session cookie found")
 		return ""
+	}
+	
+	// JWT トークンの場合は、デコードしてユーザーIDを取得する
+	if userID := h.extractUserIDFromJWT(cookie.Value); userID != "" {
+		return userID
 	}
 
 	// セッショントークンからユーザーIDを抽出
@@ -173,12 +175,10 @@ func (h *OAuth2Handler) getUserIDFromSession(r *http.Request) string {
 		parts := strings.Split(cookie.Value, "_")
 		if len(parts) >= 3 {
 			userID := "user_" + parts[2]
-			log.Printf("OAuth2 Gateway: Extracted user ID from cookie: %s", userID)
 			return userID
 		}
 	}
 
-	log.Printf("OAuth2 Gateway: Could not extract user ID from session or auth header")
 	return ""
 }
 
@@ -194,7 +194,6 @@ func (h *OAuth2Handler) redirectToLogin(w http.ResponseWriter, r *http.Request, 
 	loginBaseURL.RawQuery = loginParams.Encode()
 	
 	loginURL := loginBaseURL.String()
-	log.Printf("OAuth2 Gateway: Redirecting to login: %s", loginURL)
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
@@ -290,8 +289,6 @@ func (h *OAuth2Handler) redirectToConsentScreen(w http.ResponseWriter, r *http.R
 	
 	consentBaseURL.RawQuery = consentParams.Encode()
 	consentURL := consentBaseURL.String()
-	
-	log.Printf("OAuth2 Gateway: Redirecting to consent screen: %s", consentURL)
 	http.Redirect(w, r, consentURL, http.StatusFound)
 }
 
@@ -311,8 +308,6 @@ func (h *OAuth2Handler) redirectWithCode(w http.ResponseWriter, r *http.Request,
 
 	u.RawQuery = query.Encode()
 	finalURL := u.String()
-
-	log.Printf("OAuth2 Gateway: Redirecting to client callback: %s", finalURL)
 	http.Redirect(w, r, finalURL, http.StatusFound)
 }
 
@@ -355,7 +350,6 @@ func (h *OAuth2Handler) extractUserIDFromJWT(token string) string {
 	// JWT形式: header.payload.signature
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		log.Printf("OAuth2 Gateway: Invalid JWT format")
 		return ""
 	}
 	
@@ -368,23 +362,19 @@ func (h *OAuth2Handler) extractUserIDFromJWT(token string) string {
 	
 	decoded, err := base64.URLEncoding.DecodeString(payload)
 	if err != nil {
-		log.Printf("OAuth2 Gateway: Failed to decode JWT payload: %v", err)
 		return ""
 	}
 	
 	// JSONをパース
 	var claims map[string]interface{}
 	if err := json.Unmarshal(decoded, &claims); err != nil {
-		log.Printf("OAuth2 Gateway: Failed to parse JWT claims: %v", err)
 		return ""
 	}
 	
 	// user_idを取得
 	if userID, ok := claims["user_id"].(string); ok {
-		log.Printf("OAuth2 Gateway: Found user_id in JWT: %s", userID)
-		return userID // そのまま返す（既に適切な形式になっている可能性）
+		return userID
 	}
 	
-	log.Printf("OAuth2 Gateway: No user_id found in JWT claims")
 	return ""
 }

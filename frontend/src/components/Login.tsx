@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
@@ -9,9 +9,31 @@ const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, loading, error } = useAuth();
+  const { login, loading, error, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ログイン済みの場合は適切な場所にリダイレクト
+  useEffect(() => {
+    if (isAuthenticated) {
+      const urlParams = new URLSearchParams(location.search);
+      const redirectUri = urlParams.get('redirect_uri');
+      
+      if (redirectUri) {
+        // OAuth2フローの場合、同意画面への認証済みリクエストとしてリダイレクト
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          const url = new URL(redirectUri);
+          url.searchParams.set('auth_token', token);
+          window.location.href = url.toString();
+        } else {
+          window.location.href = redirectUri;
+        }
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    }
+  }, [isAuthenticated, location.search, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,9 +43,7 @@ const Login: React.FC = () => {
     }
 
     try {
-      console.log('Login component - starting login process');
       await login(username, password);
-      console.log('Login component - login completed, waiting briefly before navigation');
       
       // 少し待ってから遷移（ユーザー状態の更新を待つ）
       setTimeout(() => {
@@ -31,26 +51,16 @@ const Login: React.FC = () => {
         const redirectUri = urlParams.get('redirect_uri');
         
         if (redirectUri) {
-          console.log('Login component - redirecting to:', redirectUri);
           // OAuth2フロー用に認証トークンをクエリパラメータで含めてリダイレクト
           const token = localStorage.getItem('accessToken');
-          console.log('Login component - auth_token from localStorage:', token ? token.substring(0, 20) + '...' : 'null');
-          // デバッグ用: リダイレクト前に一時停止
-          if (!token) {
-            alert('No auth_token found in localStorage!');
-          }
           if (token) {
             const url = new URL(redirectUri);
             url.searchParams.set('auth_token', token);
-            const finalUrl = url.toString();
-            console.log('Login component - final redirect URL:', finalUrl.substring(0, 100) + '...');
-            window.location.href = finalUrl;
+            window.location.href = url.toString();
           } else {
-            console.log('Login component - no token found, redirecting without auth_token');
             window.location.href = redirectUri;
           }
         } else {
-          console.log('Login component - navigating to dashboard');
           navigate('/dashboard');
         }
       }, 100);
@@ -59,6 +69,23 @@ const Login: React.FC = () => {
       console.error('Login failed:', error);
     }
   };
+
+  // ログイン済みの場合はローディング表示
+  if (isAuthenticated) {
+    return (
+      <div className="auth-container">
+        <div className="auth-card">
+          <div style={{ textAlign: 'center', padding: '2rem' }}>
+            <h1 className="auth-title">Glen ID</h1>
+            <p className="auth-subtitle">リダイレクト中...</p>
+            <div style={{ marginTop: '1rem' }}>
+              <div className="spinner"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-container">

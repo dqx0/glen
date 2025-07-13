@@ -23,7 +23,6 @@ const WebAuthnCredentialsSection: React.FC = () => {
   const [editingName, setEditingName] = useState('');
 
   useEffect(() => {
-    console.log('WebAuthnCredentialsSection: user:', user);
     if (user && isSupported) {
       loadCredentials();
     } else {
@@ -50,7 +49,6 @@ const WebAuthnCredentialsSection: React.FC = () => {
         transport: Array.isArray(cred.transport) ? cred.transport : []
       }));
       
-      console.log('Loaded credentials:', normalizedCredentials);
       setCredentials(normalizedCredentials);
     } catch (error: any) {
       console.error('Failed to load WebAuthn credentials:', error);

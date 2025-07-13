@@ -27,28 +27,22 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
 
   const checkWebAuthnSupport = async () => {
     const supported = WebAuthnService.isSupported();
-    console.log('WebAuthnSection: WebAuthn support check:', supported);
     setIsSupported(supported);
 
     if (supported) {
       const platformSupported = await WebAuthnService.isPlatformAuthenticatorSupported();
-      console.log('WebAuthnSection: Platform authenticator support:', platformSupported);
       setIsPlatformSupported(platformSupported);
     }
   };
 
   const handleWebAuthnSuccess = async (response: AuthenticationFinishResponse) => {
     try {
-      console.log('WebAuthn認証成功:', response);
-      
       if (!response.user_id) {
         throw new Error('User ID not found in authentication response');
       }
 
       // AuthContextのWebAuthn専用ログイン関数を使用（パスワードログインと同じパターン）
-      console.log('WebAuthn ログイン処理を開始...');
       await loginWithWebAuthn(response.user_id);
-      console.log('WebAuthn ログイン処理完了');
 
       // 少し待ってからダッシュボードにリダイレクト
       setTimeout(() => {
@@ -56,7 +50,7 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
       }, 100);
       
     } catch (error: any) {
-      console.error('Post-WebAuthn authentication failed:', error);
+      console.error('WebAuthn login failed:', error);
       onError?.(error.message || 'ログイン処理に失敗しました');
     }
   };
@@ -67,17 +61,13 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
 
   // 既にログインしている場合は表示しない
   if (user) {
-    console.log('WebAuthnSection: User already logged in, hiding WebAuthn section');
     return null;
   }
 
   // WebAuthnがサポートされていない場合は表示しない
   if (!isSupported) {
-    console.log('WebAuthnSection: WebAuthn not supported, hiding section');
     return null;
   }
-
-  console.log('WebAuthnSection: Rendering WebAuthn section', { username, disabled, isSupported, isPlatformSupported });
 
   return (
     <div>
