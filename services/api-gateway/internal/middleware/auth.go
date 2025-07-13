@@ -1,11 +1,13 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -58,7 +60,7 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 		// ユーザーIDをヘッダーに設定（プロキシ用）
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			token := authHeader[7:]
-			if userID := extractUserIDFromJWT(token); userID != "" {
+			if userID := a.extractUserIDFromToken(token); userID != "" {
 				r.Header.Set("X-User-ID", userID)
 			}
 		}
@@ -68,27 +70,24 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// validateJWTToken はJWTトークンを検証する
+// validateJWTToken はJWTトークンまたはOAuth2アクセストークンを検証する
 func (a *AuthMiddleware) validateJWTToken(token string) bool {
-	// 簡易的な実装：実際には auth-service に検証リクエストを送信
-	// ここでは基本的な形式チェックのみ
 	if len(token) < 10 {
 		return false
 	}
 	
 	// トークンが適切な形式かチェック（JWT は通常 xxx.yyy.zzz の形式）
 	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		log.Printf("Invalid JWT format: expected 3 parts, got %d", len(parts))
-		return false
+	if len(parts) == 3 {
+		// JWTトークンの場合の検証（従来の処理）
+		// 実際のアプリケーションでは、auth-service に検証リクエストを送信
+		log.Printf("Validating JWT token")
+		return true
+	} else {
+		// OAuth2 アクセストークンの可能性があるので introspection で検証
+		log.Printf("Validating OAuth2 access token via introspection")
+		return a.validateOAuth2Token(token)
 	}
-	
-	// 実際のアプリケーションでは、auth-service に検証リクエストを送信
-	// validateURL := fmt.Sprintf("%s/api/v1/auth/validate", a.authServiceURL)
-	// ... HTTP リクエストの実装
-	
-	// 開発段階では true を返す
-	return true
 }
 
 // JWTPayload はJWTのペイロード構造
@@ -96,6 +95,19 @@ type JWTPayload struct {
 	UserID   string `json:"user_id"`
 	Username string `json:"username"`
 	Exp      int64  `json:"exp"`
+}
+
+// extractUserIDFromToken はJWTトークンまたはOAuth2トークンからユーザーIDを抽出する
+func (a *AuthMiddleware) extractUserIDFromToken(token string) string {
+	// JWTかOAuth2トークンかを判定
+	parts := strings.Split(token, ".")
+	if len(parts) == 3 {
+		// JWTトークンの場合
+		return extractUserIDFromJWT(token)
+	} else {
+		// OAuth2トークンの場合、introspectionで取得
+		return a.extractUserIDFromOAuth2Token(token)
+	}
 }
 
 // extractUserIDFromJWT はJWTトークンからユーザーIDを抽出する
@@ -134,6 +146,107 @@ func extractUserIDFromJWT(token string) string {
 
 	log.Printf("Extracted user_id from JWT: %s", jwtPayload.UserID)
 	return jwtPayload.UserID
+}
+
+// validateOAuth2Token はOAuth2アクセストークンをintrospectionで検証する
+func (a *AuthMiddleware) validateOAuth2Token(token string) bool {
+	// OAuth2 introspection エンドポイントにリクエストを送信
+	introspectURL := a.authServiceURL + "/api/v1/oauth2/introspect"
+	
+	// Form data for introspection request
+	formData := url.Values{}
+	formData.Set("token", token)
+	
+	req, err := http.NewRequest("POST", introspectURL, bytes.NewBufferString(formData.Encode()))
+	if err != nil {
+		log.Printf("Failed to create introspection request: %v", err)
+		return false
+	}
+	
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to call introspection endpoint: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Introspection endpoint returned status: %d", resp.StatusCode)
+		return false
+	}
+	
+	var introspectResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&introspectResp); err != nil {
+		log.Printf("Failed to decode introspection response: %v", err)
+		return false
+	}
+	
+	// Check if token is active
+	active, ok := introspectResp["active"].(bool)
+	if !ok || !active {
+		log.Printf("OAuth2 token is not active")
+		return false
+	}
+	
+	log.Printf("OAuth2 token validation successful")
+	return true
+}
+
+// extractUserIDFromOAuth2Token はOAuth2アクセストークンからユーザーIDを抽出する
+func (a *AuthMiddleware) extractUserIDFromOAuth2Token(token string) string {
+	// OAuth2 introspection エンドポイントにリクエストを送信
+	introspectURL := a.authServiceURL + "/api/v1/oauth2/introspect"
+	
+	// Form data for introspection request
+	formData := url.Values{}
+	formData.Set("token", token)
+	
+	req, err := http.NewRequest("POST", introspectURL, bytes.NewBufferString(formData.Encode()))
+	if err != nil {
+		log.Printf("Failed to create introspection request for user ID: %v", err)
+		return ""
+	}
+	
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to call introspection endpoint for user ID: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Introspection endpoint returned status for user ID: %d", resp.StatusCode)
+		return ""
+	}
+	
+	var introspectResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&introspectResp); err != nil {
+		log.Printf("Failed to decode introspection response for user ID: %v", err)
+		return ""
+	}
+	
+	// Check if token is active and extract username (which contains user ID)
+	active, ok := introspectResp["active"].(bool)
+	if !ok || !active {
+		log.Printf("OAuth2 token is not active when extracting user ID")
+		return ""
+	}
+	
+	// Extract user ID from username field
+	username, ok := introspectResp["username"].(string)
+	if !ok {
+		log.Printf("No username field in OAuth2 introspection response")
+		return ""
+	}
+	
+	log.Printf("Extracted user ID from OAuth2 token: %s", username)
+	return username
 }
 
 // validateAPIKey はAPIキーを検証する

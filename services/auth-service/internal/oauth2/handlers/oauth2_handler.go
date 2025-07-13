@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
@@ -67,70 +68,72 @@ type CreateClientResponse struct {
 	CreatedAt    string   `json:"created_at"`
 }
 
-// Authorize handles OAuth2 authorization requests
-// GET/POST /oauth/authorize
+// AuthorizeRequest represents the authorization request from API Gateway
+type AuthorizeAPIRequest struct {
+	UserID              string `json:"user_id"`
+	ClientID            string `json:"client_id"`
+	RedirectURI         string `json:"redirect_uri"`
+	ResponseType        string `json:"response_type"`
+	Scope               string `json:"scope"`
+	State               string `json:"state,omitempty"`
+	CodeChallenge       string `json:"code_challenge,omitempty"`
+	CodeChallengeMethod string `json:"code_challenge_method,omitempty"`
+}
+
+// AuthorizeResponse represents the authorization response
+type AuthorizeAPIResponse struct {
+	Code  string `json:"code"`
+	State string `json:"state"`
+}
+
+// Authorize handles OAuth2 authorization requests from API Gateway
+// POST /oauth/authorize
 func (h *OAuth2Handler) Authorize(w http.ResponseWriter, r *http.Request) {
-	// Parse query parameters (GET) or form data (POST)
-	var values url.Values
-	if r.Method == http.MethodGet {
-		values = r.URL.Query()
-	} else if r.Method == http.MethodPost {
-		if err := r.ParseForm(); err != nil {
-			h.redirectWithError(w, r, "", "", "invalid_request", "Failed to parse form data")
-			return
-		}
-		values = r.Form
-	} else {
+	if r.Method != http.MethodPost {
 		h.writeOAuth2Error(w, http.StatusMethodNotAllowed, "invalid_request", "Method not allowed")
 		return
 	}
 
-	// Extract parameters
-	clientID := values.Get("client_id")
-	redirectURI := values.Get("redirect_uri")
-	responseType := values.Get("response_type")
-	scope := values.Get("scope")
-	state := values.Get("state")
-	codeChallenge := values.Get("code_challenge")
-	codeChallengeMethod := values.Get("code_challenge_method")
+	var req AuthorizeAPIRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "Invalid JSON")
+		return
+	}
 
 	// Basic validation
-	if clientID == "" || redirectURI == "" || responseType == "" {
-		h.redirectWithError(w, r, redirectURI, state, "invalid_request", "Missing required parameters")
+	if req.UserID == "" || req.ClientID == "" || req.RedirectURI == "" || req.ResponseType == "" {
+		h.writeOAuth2Error(w, http.StatusBadRequest, "invalid_request", "Missing required parameters")
 		return
 	}
 
-	// For now, we'll assume the user is authenticated and get user ID from context or session
-	// In a real implementation, this would check user authentication and handle login flow
-	userID := h.getUserID(r)
-	if userID == "" {
-		// Redirect to login page with return URL
-		loginURL := h.buildLoginURL(r.URL.String())
-		http.Redirect(w, r, loginURL, http.StatusFound)
-		return
-	}
+	log.Printf("OAuth2 Auth Service: Processing authorization for user: %s, client: %s", req.UserID, req.ClientID)
 
-	// Create authorization request
+	// Create service authorization request
 	authReq := &service.AuthorizeRequest{
-		ClientID:            clientID,
-		RedirectURI:         redirectURI,
-		ResponseType:        responseType,
-		Scope:               scope,
-		State:               state,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: codeChallengeMethod,
+		ClientID:            req.ClientID,
+		RedirectURI:         req.RedirectURI,
+		ResponseType:        req.ResponseType,
+		Scope:               req.Scope,
+		State:               req.State,
+		CodeChallenge:       req.CodeChallenge,
+		CodeChallengeMethod: req.CodeChallengeMethod,
 	}
 
-	// Process authorization
-	authResp, err := h.oauth2Service.Authorize(r.Context(), userID, authReq)
+	// Process authorization through service
+	authResp, err := h.oauth2Service.Authorize(r.Context(), req.UserID, authReq)
 	if err != nil {
-		h.redirectWithError(w, r, redirectURI, state, h.mapServiceErrorToOAuth2Error(err), err.Error())
+		h.writeOAuth2Error(w, h.mapServiceErrorToHTTPStatus(err), h.mapServiceErrorToOAuth2Error(err), err.Error())
 		return
 	}
 
-	// Build redirect URL with authorization code
-	redirectURL := h.buildSuccessRedirectURL(redirectURI, authResp.Code, authResp.State)
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+	// Return JSON response to API Gateway
+	response := &AuthorizeAPIResponse{
+		Code:  authResp.Code,
+		State: authResp.State,
+	}
+
+	log.Printf("OAuth2 Auth Service: Authorization successful, returning code: %s", authResp.Code)
+	h.writeJSON(w, http.StatusOK, response)
 }
 
 // Token handles OAuth2 token requests
@@ -406,13 +409,273 @@ func (h *OAuth2Handler) getUserID(r *http.Request) string {
 	// 2. Validate JWT token
 	// 3. Extract user ID from authentication context
 	
-	// For demo purposes, check for a user_id header
+	// Check for session-based authentication (standard OAuth2 approach)
+	// In a real OAuth2 implementation, you would check:
+	// 1. HTTP session cookies
+	// 2. Server-side session storage
+	// 3. JWT tokens in secure cookies
+	
+	// Log all cookies for debugging
+	log.Printf("OAuth2 getUserID: All cookies: %v", r.Cookies())
+	
+	// For this demo, we'll check for a session token in cookies
+	if cookie, err := r.Cookie("glen_session"); err == nil && cookie.Value != "" {
+		log.Printf("OAuth2 getUserID: Found glen_session cookie: %s", cookie.Value[:20]+"...")
+		// Extract user ID from session token
+		if userID := h.extractUserIDFromSession(cookie.Value); userID != "" {
+			log.Printf("OAuth2 getUserID: Extracted user ID from session: %s", userID)
+			return userID
+		}
+	} else {
+		log.Printf("OAuth2 getUserID: No glen_session cookie found, error: %v", err)
+	}
+	
+	// Fallback: Check for X-User-ID header (for API Gateway forwarding)
 	if userID := r.Header.Get("X-User-ID"); userID != "" {
 		return userID
 	}
 	
-	// Or check for a test parameter (only for development)
-	if userID := r.URL.Query().Get("test_user_id"); userID != "" {
+	
+	return ""
+}
+
+func (h *OAuth2Handler) showLoginForm(w http.ResponseWriter, r *http.Request, clientID, redirectURI, responseType, scope, state, codeChallenge, codeChallengeMethod string) {
+	// Generate a simple OAuth2 login form that will handle authentication
+	// and redirect back to the OAuth2 flow
+	html := `<!DOCTYPE html>
+<html>
+<head>
+    <title>Glen ID Platform - OAuth2 Login</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 400px; margin: 100px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; }
+        .btn:hover { background: #0056b3; }
+        .title { text-align: center; margin-bottom: 30px; color: #333; }
+        .oauth-info { background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h2 class="title">Glen ID Platform</h2>
+    <div class="oauth-info">
+        <p><strong>Application:</strong> ` + clientID + `</p>
+        <p><strong>Permissions:</strong> ` + scope + `</p>
+    </div>
+    <form method="POST" action="/api/v1/oauth2/authorize">
+        <input type="hidden" name="client_id" value="` + clientID + `">
+        <input type="hidden" name="redirect_uri" value="` + redirectURI + `">
+        <input type="hidden" name="response_type" value="` + responseType + `">
+        <input type="hidden" name="scope" value="` + scope + `">
+        <input type="hidden" name="state" value="` + state + `">
+        <input type="hidden" name="code_challenge" value="` + codeChallenge + `">
+        <input type="hidden" name="code_challenge_method" value="` + codeChallengeMethod + `">
+        
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        
+        <button type="submit" class="btn">Login and Authorize</button>
+    </form>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(html))
+}
+
+func (h *OAuth2Handler) showConsentScreen(w http.ResponseWriter, r *http.Request, clientID, redirectURI, responseType, scope, state, codeChallenge, codeChallengeMethod, userID string) {
+	// Generate OAuth2 consent screen (standard OAuth2 UX)
+	scopeList := strings.Split(scope, " ")
+	scopeDescriptions := map[string]string{
+		"read":    "プロフィール情報の読み取り",
+		"write":   "プロフィール情報の更新", 
+		"profile": "基本プロフィール情報へのアクセス",
+		"email":   "メールアドレスへのアクセス",
+	}
+	
+	html := `<!DOCTYPE html>
+<html>
+<head>
+    <title>Glen ID Platform - Authorization</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 100px auto; padding: 20px; background: #f5f5f5; }
+        .consent-card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .title { text-align: center; margin-bottom: 30px; color: #333; }
+        .app-info { background: #e3f2fd; padding: 20px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196f3; }
+        .permissions { margin: 20px 0; }
+        .permission-item { padding: 10px 0; border-bottom: 1px solid #eee; }
+        .permission-item:last-child { border-bottom: none; }
+        .buttons { display: flex; gap: 10px; margin-top: 30px; }
+        .btn { padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; flex: 1; }
+        .btn-approve { background: #4caf50; color: white; }
+        .btn-approve:hover { background: #45a049; }
+        .btn-deny { background: #f44336; color: white; }
+        .btn-deny:hover { background: #da190b; }
+        .user-info { text-align: center; margin-bottom: 20px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="consent-card">
+        <h2 class="title">🔐 Glen ID Platform</h2>
+        
+        <div class="user-info">
+            Logged in as: <strong>` + userID + `</strong>
+        </div>
+        
+        <div class="app-info">
+            <h3>Authorization Request</h3>
+            <p><strong>Application:</strong> ` + clientID + `</p>
+            <p>This application is requesting access to your account.</p>
+        </div>
+        
+        <div class="permissions">
+            <h4>Requested Permissions:</h4>`
+	
+	for _, s := range scopeList {
+		desc, exists := scopeDescriptions[s]
+		if !exists {
+			desc = s
+		}
+		html += `
+            <div class="permission-item">
+                <strong>` + s + `:</strong> ` + desc + `
+            </div>`
+	}
+	
+	html += `
+        </div>
+        
+        <div class="buttons">
+            <form method="POST" style="flex: 1;" onsubmit="this.querySelector('button').disabled=true;">
+                <input type="hidden" name="client_id" value="` + clientID + `">
+                <input type="hidden" name="redirect_uri" value="` + redirectURI + `">
+                <input type="hidden" name="response_type" value="` + responseType + `">
+                <input type="hidden" name="scope" value="` + scope + `">
+                <input type="hidden" name="state" value="` + state + `">
+                <input type="hidden" name="code_challenge" value="` + codeChallenge + `">
+                <input type="hidden" name="code_challenge_method" value="` + codeChallengeMethod + `">
+                <input type="hidden" name="consent" value="approve">
+                <button type="submit" class="btn btn-approve">Allow</button>
+            </form>
+            
+            <form method="POST" style="flex: 1;" onsubmit="this.querySelector('button').disabled=true;">
+                <input type="hidden" name="client_id" value="` + clientID + `">
+                <input type="hidden" name="redirect_uri" value="` + redirectURI + `">
+                <input type="hidden" name="state" value="` + state + `">
+                <input type="hidden" name="consent" value="deny">
+                <button type="submit" class="btn btn-deny">Deny</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(html))
+}
+
+func (h *OAuth2Handler) authenticateUser(w http.ResponseWriter, r *http.Request, username, password string) bool {
+	// This is a simplified authentication for demo purposes
+	// In production, you would:
+	// 1. Validate credentials against user database
+	// 2. Check password hash
+	// 3. Handle account lockouts, etc.
+	
+	log.Printf("OAuth2 authenticateUser: Attempting authentication for user: %s", username)
+	
+	// For demo: accept any non-empty username/password
+	if username != "" && password != "" {
+		// Generate a mock user ID (in production, get from database)
+		userID := "user_" + username
+		
+		// Create session token (simplified - use the username as token for demo)
+		sessionToken := "session_" + userID + "_" + username
+		
+		// Set session cookie
+		sessionCookie := &http.Cookie{
+			Name:     "glen_session",
+			Value:    sessionToken,
+			// No Domain set - allows sharing across localhost ports
+			Path:     "/",
+			HttpOnly: false, // Set to false for development debugging
+			Secure:   false, // Set to true in production with HTTPS  
+			SameSite: http.SameSiteLaxMode, // Use Lax for better browser compatibility
+			MaxAge:   3600, // 1 hour
+		}
+		http.SetCookie(w, sessionCookie)
+		
+		log.Printf("OAuth2 authenticateUser: Authentication successful for user: %s, userID: %s", username, userID)
+		return true
+	}
+	
+	log.Printf("OAuth2 authenticateUser: Authentication failed for user: %s", username)
+	return false
+}
+
+func (h *OAuth2Handler) extractUserIDFromSession(sessionToken string) string {
+	// This is a simplified session token parsing for demo purposes
+	// In production, you would:
+	// 1. Validate the session token signature
+	// 2. Check session expiration
+	// 3. Look up session in server-side storage (Redis, database, etc.)
+	
+	log.Printf("OAuth2 extractUserIDFromSession: Parsing session token: %s", sessionToken)
+	
+	// Parse our simple session token format: "session_user_username_username"
+	if strings.HasPrefix(sessionToken, "session_user_") {
+		parts := strings.Split(sessionToken, "_")
+		if len(parts) >= 3 {
+			userID := "user_" + parts[2] // Extract username part
+			log.Printf("OAuth2 extractUserIDFromSession: Extracted user ID: %s", userID)
+			return userID
+		}
+	}
+	
+	// Fallback: try JWT format for backward compatibility
+	if strings.Contains(sessionToken, ".") {
+		return h.extractUserIDFromJWT(sessionToken)
+	}
+	
+	log.Printf("OAuth2 extractUserIDFromSession: Could not parse session token")
+	return ""
+}
+
+func (h *OAuth2Handler) extractUserIDFromJWT(token string) string {
+	// This is a simplified JWT parsing for demo purposes
+	// In production, you should properly validate the JWT signature
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	
+	// Decode the payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	
+	// Parse the JSON payload
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	
+	// Extract user_id from claims
+	if userID, ok := claims["user_id"].(string); ok {
 		return userID
 	}
 	
@@ -422,7 +685,9 @@ func (h *OAuth2Handler) getUserID(r *http.Request) string {
 func (h *OAuth2Handler) buildLoginURL(returnURL string) string {
 	// This should redirect to your application's login page
 	// The login page should handle authentication and redirect back to the OAuth authorization endpoint
-	loginURL := "/auth/login?redirect_uri=" + url.QueryEscape(returnURL)
+	// Build the full return URL for API Gateway (centralized access)
+	fullReturnURL := "http://localhost:8080" + returnURL
+	loginURL := "http://localhost:5173/login?redirect_uri=" + url.QueryEscape(fullReturnURL)
 	return loginURL
 }
 

@@ -31,6 +31,7 @@ export interface LoginResponse {
 
 export interface UserContextType {
   user: User | null;
+  isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   loginWithWebAuthn: (userId: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;

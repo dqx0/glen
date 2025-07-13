@@ -110,7 +110,16 @@ func main() {
 		corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToSocialService))(w, r)
 	}))
 
-	// OAuth2関連（認証必要）
+	// OAuth2 Handler (Gateway が制御)
+	oauth2Handler := handlers.NewOAuth2Handler(config.AuthService)
+	
+	// OAuth2 authorize エンドポイント（Gateway で処理）
+	mux.HandleFunc("/api/v1/oauth2/authorize", loggingMiddleware.Handle(corsMiddleware.Handle(oauth2Handler.HandleAuthorize)))
+	mux.HandleFunc("/api/v1/oauth2/token", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
+	mux.HandleFunc("/api/v1/oauth2/revoke", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
+	mux.HandleFunc("/api/v1/oauth2/introspect", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
+	
+	// OAuth2 クライアント管理（認証必要）
 	mux.HandleFunc("/api/v1/oauth2/", loggingMiddleware.Handle(corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService))))
 
 	// サーバー起動

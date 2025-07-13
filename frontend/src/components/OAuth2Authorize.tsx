@@ -41,6 +41,8 @@ const OAuth2Authorize: React.FC = () => {
   };
 
   useEffect(() => {
+    console.log('OAuth2Authorize: useEffect triggered, isAuthenticated:', isAuthenticated, 'user:', user);
+    
     const urlParams = new URLSearchParams(location.search);
     
     // OAuth2パラメータを抽出
@@ -54,14 +56,18 @@ const OAuth2Authorize: React.FC = () => {
       code_challenge_method: urlParams.get('code_challenge_method') || undefined,
     };
 
+    console.log('OAuth2Authorize: authParams:', authParams);
+
     // 必須パラメータの検証
     if (!authParams.client_id || !authParams.redirect_uri || !authParams.response_type) {
+      console.log('OAuth2Authorize: missing required parameters');
       setError('必須パラメータが不足しています');
       setLoading(false);
       return;
     }
 
     if (authParams.response_type !== 'code') {
+      console.log('OAuth2Authorize: unsupported response_type:', authParams.response_type);
       setError('サポートされていないresponse_typeです');
       setLoading(false);
       return;
@@ -72,11 +78,13 @@ const OAuth2Authorize: React.FC = () => {
 
     // ユーザーが認証されていない場合はログインページにリダイレクト
     if (!isAuthenticated) {
+      console.log('OAuth2Authorize: user not authenticated, redirecting to login');
       const loginUrl = `/login?redirect_uri=${encodeURIComponent(location.pathname + location.search)}`;
       navigate(loginUrl);
       return;
     }
 
+    console.log('OAuth2Authorize: user is authenticated, loading client:', authParams.client_id);
     // クライアント情報を取得
     loadClient(authParams.client_id);
   }, [location, isAuthenticated, navigate]);
@@ -109,7 +117,10 @@ const OAuth2Authorize: React.FC = () => {
   };
 
   const handleAuthorize = async () => {
-    if (!params || !client || !user) return;
+    if (!params || !client || !user) {
+      console.log('OAuth2Authorize: handleAuthorize - missing required data', { params, client, user });
+      return;
+    }
 
     try {
       setAuthorizing(true);
@@ -125,13 +136,16 @@ const OAuth2Authorize: React.FC = () => {
         code_challenge_method: params.code_challenge_method,
       };
 
+      console.log('OAuth2Authorize: Sending authorization request:', authorizeRequest);
       await OAuth2Service.authorize(authorizeRequest);
+      console.log('OAuth2Authorize: Authorization request completed');
 
       // 成功時は認可コードとともにリダイレクト
       // 実際のフローでは、サーバーが直接リダイレクトするため、ここには到達しない
+      console.log('OAuth2Authorize: If you see this log, there might be an issue with server-side redirect');
       
     } catch (error: unknown) {
-      console.error('Authorization failed:', error);
+      console.error('OAuth2Authorize: Authorization failed:', error);
       setError(getErrorMessage(error, '認可に失敗しました'));
     } finally {
       setAuthorizing(false);

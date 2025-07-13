@@ -23,7 +23,7 @@ func NewCORSMiddleware() *CORSMiddleware {
 			"https://glen.dqx0.com",
 		}, // フロントエンドのオリジンを明示的に許可
 		allowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		allowedHeaders: []string{"Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRF-Token", "Access-Control-Request-Method", "Access-Control-Request-Headers"},
+		allowedHeaders: []string{"Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "X-CSRF-Token", "Access-Control-Request-Method", "Access-Control-Request-Headers", "X-User-ID"},
 	}
 }
 

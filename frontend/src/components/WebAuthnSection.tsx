@@ -27,10 +27,12 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
 
   const checkWebAuthnSupport = async () => {
     const supported = WebAuthnService.isSupported();
+    console.log('WebAuthnSection: WebAuthn support check:', supported);
     setIsSupported(supported);
 
     if (supported) {
       const platformSupported = await WebAuthnService.isPlatformAuthenticatorSupported();
+      console.log('WebAuthnSection: Platform authenticator support:', platformSupported);
       setIsPlatformSupported(platformSupported);
     }
   };
@@ -65,13 +67,17 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
 
   // 既にログインしている場合は表示しない
   if (user) {
+    console.log('WebAuthnSection: User already logged in, hiding WebAuthn section');
     return null;
   }
 
   // WebAuthnがサポートされていない場合は表示しない
   if (!isSupported) {
+    console.log('WebAuthnSection: WebAuthn not supported, hiding section');
     return null;
   }
+
+  console.log('WebAuthnSection: Rendering WebAuthn section', { username, disabled, isSupported, isPlatformSupported });
 
   return (
     <div>

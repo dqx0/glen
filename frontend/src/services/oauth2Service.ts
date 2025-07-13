@@ -124,39 +124,45 @@ export class OAuth2Service {
 
   // Authorization Flow
   static async authorize(request: AuthorizeRequest): Promise<void> {
-    const formData = new URLSearchParams();
-    formData.append('client_id', request.client_id);
-    formData.append('redirect_uri', request.redirect_uri);
-    formData.append('response_type', request.response_type);
-    formData.append('scope', request.scope);
-    
-    if (request.state) {
-      formData.append('state', request.state);
+    try {
+      // ユーザー情報をローカルストレージから取得
+      const userDataStr = localStorage.getItem('user');
+      const userData = userDataStr ? JSON.parse(userDataStr) : null;
+      
+      console.log('OAuth2Service.authorize: User data:', userData);
+      console.log('OAuth2Service.authorize: Request:', request);
+      
+      // Build authorization URL for direct browser navigation
+      const params = new URLSearchParams({
+        client_id: request.client_id,
+        redirect_uri: request.redirect_uri,
+        response_type: request.response_type,
+        scope: request.scope,
+        ...(request.state && { state: request.state }),
+        ...(request.code_challenge && { code_challenge: request.code_challenge }),
+        ...(request.code_challenge_method && { code_challenge_method: request.code_challenge_method }),
+      });
+      
+      // For OAuth2 authorization, we need to navigate the browser directly
+      // instead of using AJAX requests, because the server will perform redirects
+      
+      // Navigate via API Gateway for centralized request handling
+      const authUrl = `http://localhost:8080/api/v1/oauth2/authorize?${params.toString()}`;
+      
+      console.log('OAuth2Service.authorize: Navigating via API Gateway:', authUrl);
+      console.log('OAuth2Service.authorize: User ID being passed:', userData?.id);
+      
+      // Navigate directly to the authorization endpoint
+      window.location.href = authUrl;
+      
+    } catch (error: any) {
+      console.error('OAuth2Service.authorize: Error details:', error);
+      const errorMessage = error.response?.data?.error_description || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          'Authorization failed';
+      throw new Error(errorMessage);
     }
-    if (request.code_challenge) {
-      formData.append('code_challenge', request.code_challenge);
-    }
-    if (request.code_challenge_method) {
-      formData.append('code_challenge_method', request.code_challenge_method);
-    }
-
-    const response = await fetch(`${this.baseUrl}/authorize`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        ...(localStorage.getItem('accessToken') && { 
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}` 
-        }),
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error_description || error.error || 'Authorization failed');
-    }
-
-    // 成功時はサーバーがリダイレクトするため、ここには通常到達しない
   }
 
   // Token Exchange

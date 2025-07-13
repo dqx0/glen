@@ -1,0 +1,26 @@
+{
+  "name": "glen-oauth2-sample-app",
+  "version": "1.0.0",
+  "description": "Glen ID Platform OAuth2 integration sample application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "oauth2",
+    "glen",
+    "authentication",
+    "sample",
+    "demo"
+  ],
+  "author": "Glen ID Platform Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

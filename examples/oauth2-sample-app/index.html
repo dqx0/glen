@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glen OAuth2 Sample App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        .auth-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .user-info {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .hidden {
+            display: none;
+        }
+        .config-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        .config-input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .logs {
+            background: #343a40;
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Glen OAuth2 Sample App</h1>
+            <p>Glen ID Platform の OAuth2 統合をテストするためのサンプルアプリケーション</p>
+        </div>
+
+        <div class="config-section">
+            <h3>📝 設定</h3>
+            <label>Glen API Base URL:</label>
+            <input type="text" id="apiBaseUrl" class="config-input" value="https://api.glen.dqx0.com/api/v1">
+            
+            <label>Frontend Base URL:</label>
+            <input type="text" id="frontendBaseUrl" class="config-input" value="https://glen.dqx0.com">
+            
+            <label>Client ID:</label>
+            <input type="text" id="clientId" class="config-input" placeholder="your-oauth2-client-id">
+            
+            <label>Client Secret (confidential clients only):</label>
+            <input type="text" id="clientSecret" class="config-input" placeholder="your-oauth2-client-secret">
+            
+            <label>Redirect URI:</label>
+            <input type="text" id="redirectUri" class="config-input" value="http://localhost:3000/callback">
+            
+            <label>Scope:</label>
+            <input type="text" id="scope" class="config-input" value="read write">
+            
+            <button onclick="saveConfig()" class="btn">設定を保存</button>
+        </div>
+
+        <div class="auth-section">
+            <h3>🚀 認証フロー</h3>
+            
+            <!-- 未ログイン状態 -->
+            <div id="loginSection">
+                <p>Glen ID Platform にログインして OAuth2 認証を開始します。</p>
+                <button onclick="startOAuth2Login()" class="btn">Glen ID でログイン</button>
+                <button onclick="startPKCELogin()" class="btn">PKCE でログイン</button>
+            </div>
+
+            <!-- ログイン済み状態 -->
+            <div id="loggedInSection" class="hidden">
+                <div class="user-info">
+                    <h4>✅ 認証成功!</h4>
+                    <div id="userInfo"></div>
+                    <div id="tokenInfo"></div>
+                </div>
+                <button onclick="refreshToken()" class="btn">トークン更新</button>
+                <button onclick="revokeToken()" class="btn btn-danger">トークン無効化</button>
+                <button onclick="logout()" class="btn btn-danger">ログアウト</button>
+            </div>
+
+            <!-- エラー表示 -->
+            <div id="errorSection" class="error hidden">
+                <h4>❌ エラー</h4>
+                <div id="errorMessage"></div>
+            </div>
+        </div>
+
+        <div class="auth-section">
+            <h3>🔍 API テスト</h3>
+            <button onclick="testProtectedAPI()" class="btn" id="testApiBtn" disabled>保護されたAPIを呼び出し</button>
+            <div id="apiResult"></div>
+        </div>
+
+        <div class="logs">
+            <h4>📋 ログ</h4>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <script>
+        class OAuth2SampleApp {
+            constructor() {
+                this.config = this.loadConfig();
+                this.accessToken = null;
+                this.refreshToken = null;
+                this.userInfo = null;
+                this.codeVerifier = null;
+                
+                this.init();
+            }
+
+            init() {
+                this.log('OAuth2 Sample App 初期化中...');
+                
+                // URLパラメータをチェック
+                this.handleCallback();
+                
+                // 設定をUIに反映
+                this.updateConfigUI();
+                
+                // ローカルストレージからトークンを復元
+                this.restoreTokenFromStorage();
+            }
+
+            loadConfig() {
+                const saved = localStorage.getItem('oauth2_config');
+                return saved ? JSON.parse(saved) : {
+                    apiBaseUrl: 'https://api.glen.dqx0.com/api/v1',
+                    frontendBaseUrl: 'https://glen.dqx0.com',
+                    clientId: '',
+                    clientSecret: '',
+                    redirectUri: 'http://localhost:3000/callback',
+                    scope: 'read write'
+                };
+            }
+
+            saveConfig() {
+                this.config.apiBaseUrl = document.getElementById('apiBaseUrl').value;
+                this.config.frontendBaseUrl = document.getElementById('frontendBaseUrl').value;
+                this.config.clientId = document.getElementById('clientId').value;
+                this.config.clientSecret = document.getElementById('clientSecret').value;
+                this.config.redirectUri = document.getElementById('redirectUri').value;
+                this.config.scope = document.getElementById('scope').value;
+                
+                localStorage.setItem('oauth2_config', JSON.stringify(this.config));
+                this.log('設定を保存しました');
+            }
+
+            updateConfigUI() {
+                document.getElementById('apiBaseUrl').value = this.config.apiBaseUrl;
+                document.getElementById('frontendBaseUrl').value = this.config.frontendBaseUrl;
+                document.getElementById('clientId').value = this.config.clientId;
+                document.getElementById('clientSecret').value = this.config.clientSecret;
+                document.getElementById('redirectUri').value = this.config.redirectUri;
+                document.getElementById('scope').value = this.config.scope;
+            }
+
+            async startOAuth2Login() {
+                if (!this.config.clientId) {
+                    this.showError('Client ID が設定されていません');
+                    return;
+                }
+
+                this.log('OAuth2 認証フローを開始...');
+                
+                const state = this.generateState();
+                localStorage.setItem('oauth2_state', state);
+                
+                const params = new URLSearchParams({
+                    response_type: 'code',
+                    client_id: this.config.clientId,
+                    redirect_uri: this.config.redirectUri,
+                    scope: this.config.scope,
+                    state: state
+                });
+
+                const authUrl = `http://localhost:8080/api/v1/oauth2/authorize?${params.toString()}`;
+                this.log(`認証URLにリダイレクト: ${authUrl}`);
+                window.location.href = authUrl;
+            }
+
+            async startPKCELogin() {
+                if (!this.config.clientId) {
+                    this.showError('Client ID が設定されていません');
+                    return;
+                }
+
+                this.log('PKCE フローを開始...');
+                
+                // PKCE パラメータ生成
+                this.codeVerifier = this.generateCodeVerifier();
+                const codeChallenge = await this.generateCodeChallenge(this.codeVerifier);
+                const state = this.generateState();
+                
+                localStorage.setItem('oauth2_state', state);
+                localStorage.setItem('code_verifier', this.codeVerifier);
+                
+                const params = new URLSearchParams({
+                    response_type: 'code',
+                    client_id: this.config.clientId,
+                    redirect_uri: this.config.redirectUri,
+                    scope: this.config.scope,
+                    state: state,
+                    code_challenge: codeChallenge,
+                    code_challenge_method: 'S256'
+                });
+
+                const authUrl = `http://localhost:8080/api/v1/oauth2/authorize?${params.toString()}`;
+                this.log(`PKCE認証URLにリダイレクト: ${authUrl}`);
+                window.location.href = authUrl;
+            }
+
+            async handleCallback() {
+                this.log('handleCallback() called');
+                const urlParams = new URLSearchParams(window.location.search);
+                const code = urlParams.get('code');
+                const state = urlParams.get('state');
+                const error = urlParams.get('error');
+                const errorDescription = urlParams.get('error_description');
+
+                this.log(`URL params - code: ${code ? code.substring(0, 10) + '...' : 'null'}, state: ${state}, error: ${error}`);
+
+                if (error) {
+                    this.showError(`認証エラー: ${error} - ${errorDescription || ''}`);
+                    this.clearURL();
+                    return;
+                }
+
+                if (code) {
+                    this.log('認証コードを受信: ' + code.substring(0, 10) + '...');
+                    
+                    // State検証
+                    const savedState = localStorage.getItem('oauth2_state');
+                    this.log(`State validation - received: ${state}, saved: ${savedState}`);
+                    if (state !== savedState) {
+                        this.showError('State パラメータが一致しません（CSRF攻撃の可能性）');
+                        this.clearURL();
+                        return;
+                    }
+
+                    await this.exchangeCodeForToken(code);
+                    this.clearURL();
+                } else {
+                    this.log('No authorization code found in URL');
+                }
+            }
+
+            async exchangeCodeForToken(code) {
+                try {
+                    this.log('認証コードをアクセストークンに交換中...');
+                    
+                    const formData = new URLSearchParams();
+                    formData.append('grant_type', 'authorization_code');
+                    formData.append('code', code);
+                    formData.append('redirect_uri', this.config.redirectUri);
+                    formData.append('client_id', this.config.clientId);
+                    
+                    if (this.config.clientSecret) {
+                        formData.append('client_secret', this.config.clientSecret);
+                    }
+                    
+                    const savedCodeVerifier = localStorage.getItem('code_verifier');
+                    if (savedCodeVerifier) {
+                        formData.append('code_verifier', savedCodeVerifier);
+                        localStorage.removeItem('code_verifier');
+                        this.log('PKCE code_verifier を使用');
+                    }
+
+                    const response = await fetch(`${this.config.apiBaseUrl}/oauth2/token`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error_description || error.error || 'Token exchange failed');
+                    }
+
+                    const tokenData = await response.json();
+                    this.setTokens(tokenData);
+                    
+                    this.log('アクセストークン取得成功');
+                    await this.fetchUserInfo();
+                    
+                } catch (error) {
+                    this.showError('トークン交換エラー: ' + error.message);
+                    this.log('トークン交換エラー: ' + error.message);
+                }
+            }
+
+            async fetchUserInfo() {
+                try {
+                    this.log('ユーザー情報を取得中...');
+                    
+                    const response = await fetch(`${this.config.apiBaseUrl}/users/me`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            // OAuth2 demo user - create mock user info
+                            this.userInfo = {
+                                id: 'oauth2-demo-user',
+                                username: 'OAuth2 Demo User',
+                                email: 'demo@glen.dqx0.com',
+                                created_at: new Date().toISOString(),
+                                note: 'OAuth2 認証で作成された Demo ユーザーです'
+                            };
+                            this.log('OAuth2 demo ユーザー情報を作成しました');
+                        } else {
+                            throw new Error('ユーザー情報の取得に失敗しました');
+                        }
+                    } else {
+                        this.userInfo = await response.json();
+                    }
+                    this.updateUI();
+                    this.log('ユーザー情報取得成功');
+                    
+                } catch (error) {
+                    this.log('ユーザー情報取得エラー: ' + error.message);
+                }
+            }
+
+            async refreshToken() {
+                if (!this.refreshToken) {
+                    this.showError('リフレッシュトークンがありません');
+                    return;
+                }
+
+                try {
+                    this.log('トークンを更新中...');
+                    
+                    const formData = new URLSearchParams();
+                    formData.append('grant_type', 'refresh_token');
+                    formData.append('refresh_token', this.refreshToken);
+                    formData.append('client_id', this.config.clientId);
+                    
+                    if (this.config.clientSecret) {
+                        formData.append('client_secret', this.config.clientSecret);
+                    }
+
+                    const response = await fetch(`${this.config.apiBaseUrl}/oauth2/token`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error_description || error.error);
+                    }
+
+                    const tokenData = await response.json();
+                    this.setTokens(tokenData);
+                    this.updateUI();
+                    this.log('トークン更新成功');
+                    
+                } catch (error) {
+                    this.showError('トークン更新エラー: ' + error.message);
+                    this.log('トークン更新エラー: ' + error.message);
+                }
+            }
+
+            async revokeToken() {
+                if (!this.accessToken) {
+                    this.showError('無効化するトークンがありません');
+                    return;
+                }
+
+                try {
+                    this.log('トークンを無効化中...');
+                    
+                    const formData = new URLSearchParams();
+                    formData.append('token', this.accessToken);
+                    formData.append('client_id', this.config.clientId);
+                    
+                    if (this.config.clientSecret) {
+                        formData.append('client_secret', this.config.clientSecret);
+                    }
+
+                    const response = await fetch(`${this.config.apiBaseUrl}/oauth2/revoke`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error_description || error.error);
+                    }
+
+                    this.clearTokens();
+                    this.updateUI();
+                    this.log('トークン無効化成功');
+                    
+                } catch (error) {
+                    this.showError('トークン無効化エラー: ' + error.message);
+                    this.log('トークン無効化エラー: ' + error.message);
+                }
+            }
+
+            async testProtectedAPI() {
+                if (!this.accessToken) {
+                    this.showError('アクセストークンがありません');
+                    return;
+                }
+
+                try {
+                    this.log('保護されたAPIをテスト中...');
+                    
+                    const response = await fetch(`${this.config.apiBaseUrl}/users/me`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`
+                        }
+                    });
+
+                    const data = await response.json();
+                    
+                    document.getElementById('apiResult').innerHTML = `
+                        <h4>API Response:</h4>
+                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto;">${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                    
+                    this.log('API テスト成功');
+                    
+                } catch (error) {
+                    this.showError('API テストエラー: ' + error.message);
+                    this.log('API テストエラー: ' + error.message);
+                }
+            }
+
+            logout() {
+                this.log('ログアウト中...');
+                this.clearTokens();
+                this.updateUI();
+                
+                // Glen ID Platform のログアウトページにリダイレクト（オプション）
+                // window.location.href = `${this.config.frontendBaseUrl}/logout?redirect_uri=${encodeURIComponent(window.location.origin)}`;
+            }
+
+            setTokens(tokenData) {
+                this.accessToken = tokenData.access_token;
+                this.refreshToken = tokenData.refresh_token;
+                
+                // ローカルストレージに保存
+                localStorage.setItem('access_token', this.accessToken);
+                if (this.refreshToken) {
+                    localStorage.setItem('refresh_token', this.refreshToken);
+                }
+            }
+
+            clearTokens() {
+                this.accessToken = null;
+                this.refreshToken = null;
+                this.userInfo = null;
+                
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
+                localStorage.removeItem('oauth2_state');
+                localStorage.removeItem('code_verifier');
+            }
+
+            restoreTokenFromStorage() {
+                this.accessToken = localStorage.getItem('access_token');
+                this.refreshToken = localStorage.getItem('refresh_token');
+                
+                if (this.accessToken) {
+                    this.fetchUserInfo();
+                } else {
+                    this.updateUI();
+                }
+            }
+
+            updateUI() {
+                const loginSection = document.getElementById('loginSection');
+                const loggedInSection = document.getElementById('loggedInSection');
+                const testApiBtn = document.getElementById('testApiBtn');
+                
+                if (this.accessToken) {
+                    loginSection.classList.add('hidden');
+                    loggedInSection.classList.remove('hidden');
+                    testApiBtn.disabled = false;
+                    
+                    if (this.userInfo) {
+                        document.getElementById('userInfo').innerHTML = `
+                            <strong>ユーザーID:</strong> ${this.userInfo.id || 'N/A'}<br>
+                            <strong>ユーザー名:</strong> ${this.userInfo.username || 'N/A'}<br>
+                            <strong>Email:</strong> ${this.userInfo.email || 'N/A'}
+                        `;
+                    }
+                    
+                    document.getElementById('tokenInfo').innerHTML = `
+                        <strong>アクセストークン:</strong> ${this.accessToken.substring(0, 20)}...<br>
+                        ${this.refreshToken ? `<strong>リフレッシュトークン:</strong> ${this.refreshToken.substring(0, 20)}...` : ''}
+                    `;
+                } else {
+                    loginSection.classList.remove('hidden');
+                    loggedInSection.classList.add('hidden');
+                    testApiBtn.disabled = true;
+                }
+                
+                this.hideError();
+            }
+
+            showError(message) {
+                const errorSection = document.getElementById('errorSection');
+                const errorMessage = document.getElementById('errorMessage');
+                
+                errorMessage.textContent = message;
+                errorSection.classList.remove('hidden');
+                
+                this.log('エラー: ' + message);
+            }
+
+            hideError() {
+                document.getElementById('errorSection').classList.add('hidden');
+            }
+
+            clearURL() {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+
+            log(message) {
+                const timestamp = new Date().toLocaleTimeString();
+                const logElement = document.getElementById('logs');
+                logElement.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+                logElement.scrollTop = logElement.scrollHeight;
+                console.log('[OAuth2Sample]', message);
+            }
+
+            generateState() {
+                return Math.random().toString(36).substring(2, 15) + 
+                       Math.random().toString(36).substring(2, 15);
+            }
+
+            generateCodeVerifier() {
+                const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+                let text = '';
+                for (let i = 0; i < 128; i++) {
+                    text += possible.charAt(Math.floor(Math.random() * possible.length));
+                }
+                return text;
+            }
+
+            async generateCodeChallenge(codeVerifier) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(codeVerifier);
+                const digest = await crypto.subtle.digest('SHA-256', data);
+                
+                return btoa(String.fromCharCode(...new Uint8Array(digest)))
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_')
+                    .replace(/=/g, '');
+            }
+        }
+
+        // グローバル関数（ボタンから呼び出し用）
+        let app;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            app = new OAuth2SampleApp();
+        });
+
+        function saveConfig() {
+            app.saveConfig();
+        }
+
+        function startOAuth2Login() {
+            app.startOAuth2Login();
+        }
+
+        function startPKCELogin() {
+            app.startPKCELogin();
+        }
+
+        function refreshToken() {
+            app.refreshToken();
+        }
+
+        function revokeToken() {
+            app.revokeToken();
+        }
+
+        function testProtectedAPI() {
+            app.testProtectedAPI();
+        }
+
+        function logout() {
+            app.logout();
+        }
+    </script>
+</body>
+</html>

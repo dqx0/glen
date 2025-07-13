@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import SocialLoginSection from './SocialLoginSection';
 import WebAuthnSection from './WebAuthnSection';
@@ -11,6 +11,7 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const { login, loading, error } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,8 +27,16 @@ const Login: React.FC = () => {
       
       // 少し待ってから遷移（ユーザー状態の更新を待つ）
       setTimeout(() => {
-        console.log('Login component - navigating to dashboard');
-        navigate('/dashboard');
+        const urlParams = new URLSearchParams(location.search);
+        const redirectUri = urlParams.get('redirect_uri');
+        
+        if (redirectUri) {
+          console.log('Login component - redirecting to:', redirectUri);
+          navigate(redirectUri);
+        } else {
+          console.log('Login component - navigating to dashboard');
+          navigate('/dashboard');
+        }
       }, 100);
     } catch (error) {
       // エラーはAuthContextで処理済み

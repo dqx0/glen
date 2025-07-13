@@ -178,8 +178,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // isAuthenticated の計算
+  const isAuthenticated = !!user && !!AuthService.getStoredToken() && !AuthService.isTokenExpired();
+
   const value: UserContextType = {
     user,
+    isAuthenticated,
     login,
     loginWithWebAuthn,
     register,

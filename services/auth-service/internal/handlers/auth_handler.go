@@ -89,6 +89,20 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set session cookie for OAuth2 flow
+	// Remove Domain to allow cookie sharing across localhost ports
+	sessionCookie := &http.Cookie{
+		Name:     "glen_session", 
+		Value:    response.AccessToken,
+		// No Domain set - allows sharing across localhost ports
+		Path:     "/",
+		HttpOnly: false, // Set to false for development debugging
+		Secure:   false, // Set to true in production with HTTPS  
+		SameSite: http.SameSiteLaxMode, // Use Lax for better browser compatibility
+		MaxAge:   3600, // 1 hour
+	}
+	http.SetCookie(w, sessionCookie)
+
 	h.writeJSON(w, http.StatusOK, response)
 }
 
