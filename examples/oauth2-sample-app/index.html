@@ -131,7 +131,6 @@
             <div id="loginSection">
                 <p>Glen ID Platform にログインして OAuth2 認証を開始します。</p>
                 <button onclick="startOAuth2Login()" class="btn">Glen ID でログイン</button>
-                <button onclick="startPKCELogin()" class="btn">PKCE でログイン</button>
             </div>
 
             <!-- ログイン済み状態 -->
@@ -141,8 +140,6 @@
                     <div id="userInfo"></div>
                     <div id="tokenInfo"></div>
                 </div>
-                <button onclick="refreshToken()" class="btn">トークン更新</button>
-                <button onclick="revokeToken()" class="btn btn-danger">トークン無効化</button>
                 <button onclick="logout()" class="btn btn-danger">ログアウト</button>
             </div>
 
@@ -153,11 +150,6 @@
             </div>
         </div>
 
-        <div class="auth-section">
-            <h3>🔍 API テスト</h3>
-            <button onclick="testProtectedAPI()" class="btn" id="testApiBtn" disabled>保護されたAPIを呼び出し</button>
-            <div id="apiResult"></div>
-        </div>
 
         <div class="logs">
             <h4>📋 ログ</h4>
@@ -242,41 +234,11 @@
                     state: state
                 });
 
-                const authUrl = `http://localhost:8080/api/v1/oauth2/authorize?${params.toString()}`;
+                const authUrl = `${this.config.apiBaseUrl}/oauth2/authorize?${params.toString()}`;
                 this.log(`認証URLにリダイレクト: ${authUrl}`);
                 window.location.href = authUrl;
             }
 
-            async startPKCELogin() {
-                if (!this.config.clientId) {
-                    this.showError('Client ID が設定されていません');
-                    return;
-                }
-
-                this.log('PKCE フローを開始...');
-                
-                // PKCE パラメータ生成
-                this.codeVerifier = this.generateCodeVerifier();
-                const codeChallenge = await this.generateCodeChallenge(this.codeVerifier);
-                const state = this.generateState();
-                
-                localStorage.setItem('oauth2_state', state);
-                localStorage.setItem('code_verifier', this.codeVerifier);
-                
-                const params = new URLSearchParams({
-                    response_type: 'code',
-                    client_id: this.config.clientId,
-                    redirect_uri: this.config.redirectUri,
-                    scope: this.config.scope,
-                    state: state,
-                    code_challenge: codeChallenge,
-                    code_challenge_method: 'S256'
-                });
-
-                const authUrl = `http://localhost:8080/api/v1/oauth2/authorize?${params.toString()}`;
-                this.log(`PKCE認証URLにリダイレクト: ${authUrl}`);
-                window.location.href = authUrl;
-            }
 
             async handleCallback() {
                 this.log('handleCallback() called');
@@ -326,13 +288,6 @@
                     if (this.config.clientSecret) {
                         formData.append('client_secret', this.config.clientSecret);
                     }
-                    
-                    const savedCodeVerifier = localStorage.getItem('code_verifier');
-                    if (savedCodeVerifier) {
-                        formData.append('code_verifier', savedCodeVerifier);
-                        localStorage.removeItem('code_verifier');
-                        this.log('PKCE code_verifier を使用');
-                    }
 
                     const response = await fetch(`${this.config.apiBaseUrl}/oauth2/token`, {
                         method: 'POST',
@@ -362,6 +317,7 @@
             async fetchUserInfo() {
                 try {
                     this.log('ユーザー情報を取得中...');
+                    this.log('Using access token: ' + this.accessToken.substring(0, 20) + '...');
                     
                     const response = await fetch(`${this.config.apiBaseUrl}/users/me`, {
                         headers: {
@@ -369,142 +325,35 @@
                         }
                     });
 
+                    this.log('Response status: ' + response.status);
+                    this.log('Response headers: ' + JSON.stringify([...response.headers.entries()]));
+
                     if (!response.ok) {
-                        if (response.status === 404) {
-                            // OAuth2 demo user - create mock user info
-                            this.userInfo = {
-                                id: 'oauth2-demo-user',
-                                username: 'OAuth2 Demo User',
-                                email: 'demo@glen.dqx0.com',
-                                created_at: new Date().toISOString(),
-                                note: 'OAuth2 認証で作成された Demo ユーザーです'
-                            };
-                            this.log('OAuth2 demo ユーザー情報を作成しました');
-                        } else {
-                            throw new Error('ユーザー情報の取得に失敗しました');
-                        }
-                    } else {
-                        this.userInfo = await response.json();
+                        const errorText = await response.text();
+                        this.log('Error response body: ' + errorText);
+                        throw new Error(`ユーザー情報の取得に失敗しました (${response.status}): ${errorText}`);
                     }
+
+                    const userData = await response.json();
+                    this.log('User data received: ' + JSON.stringify(userData));
+                    this.userInfo = userData.user || userData; // APIの応答形式に対応
                     this.updateUI();
                     this.log('ユーザー情報取得成功');
                     
                 } catch (error) {
                     this.log('ユーザー情報取得エラー: ' + error.message);
-                }
-            }
-
-            async refreshToken() {
-                if (!this.refreshToken) {
-                    this.showError('リフレッシュトークンがありません');
-                    return;
-                }
-
-                try {
-                    this.log('トークンを更新中...');
-                    
-                    const formData = new URLSearchParams();
-                    formData.append('grant_type', 'refresh_token');
-                    formData.append('refresh_token', this.refreshToken);
-                    formData.append('client_id', this.config.clientId);
-                    
-                    if (this.config.clientSecret) {
-                        formData.append('client_secret', this.config.clientSecret);
-                    }
-
-                    const response = await fetch(`${this.config.apiBaseUrl}/oauth2/token`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error_description || error.error);
-                    }
-
-                    const tokenData = await response.json();
-                    this.setTokens(tokenData);
+                    // エラーの場合はデモ情報を表示
+                    this.userInfo = {
+                        id: 'oauth2-demo-user',
+                        username: 'OAuth2 Demo User',
+                        email: 'demo@glen.dqx0.com',
+                        created_at: new Date().toISOString(),
+                        note: 'OAuth2 認証成功（ユーザー情報取得エラー）'
+                    };
                     this.updateUI();
-                    this.log('トークン更新成功');
-                    
-                } catch (error) {
-                    this.showError('トークン更新エラー: ' + error.message);
-                    this.log('トークン更新エラー: ' + error.message);
                 }
             }
 
-            async revokeToken() {
-                if (!this.accessToken) {
-                    this.showError('無効化するトークンがありません');
-                    return;
-                }
-
-                try {
-                    this.log('トークンを無効化中...');
-                    
-                    const formData = new URLSearchParams();
-                    formData.append('token', this.accessToken);
-                    formData.append('client_id', this.config.clientId);
-                    
-                    if (this.config.clientSecret) {
-                        formData.append('client_secret', this.config.clientSecret);
-                    }
-
-                    const response = await fetch(`${this.config.apiBaseUrl}/oauth2/revoke`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error_description || error.error);
-                    }
-
-                    this.clearTokens();
-                    this.updateUI();
-                    this.log('トークン無効化成功');
-                    
-                } catch (error) {
-                    this.showError('トークン無効化エラー: ' + error.message);
-                    this.log('トークン無効化エラー: ' + error.message);
-                }
-            }
-
-            async testProtectedAPI() {
-                if (!this.accessToken) {
-                    this.showError('アクセストークンがありません');
-                    return;
-                }
-
-                try {
-                    this.log('保護されたAPIをテスト中...');
-                    
-                    const response = await fetch(`${this.config.apiBaseUrl}/users/me`, {
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`
-                        }
-                    });
-
-                    const data = await response.json();
-                    
-                    document.getElementById('apiResult').innerHTML = `
-                        <h4>API Response:</h4>
-                        <pre style="background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto;">${JSON.stringify(data, null, 2)}</pre>
-                    `;
-                    
-                    this.log('API テスト成功');
-                    
-                } catch (error) {
-                    this.showError('API テストエラー: ' + error.message);
-                    this.log('API テストエラー: ' + error.message);
-                }
-            }
 
             logout() {
                 this.log('ログアウト中...');
@@ -534,7 +383,6 @@
                 localStorage.removeItem('access_token');
                 localStorage.removeItem('refresh_token');
                 localStorage.removeItem('oauth2_state');
-                localStorage.removeItem('code_verifier');
             }
 
             restoreTokenFromStorage() {
@@ -551,12 +399,10 @@
             updateUI() {
                 const loginSection = document.getElementById('loginSection');
                 const loggedInSection = document.getElementById('loggedInSection');
-                const testApiBtn = document.getElementById('testApiBtn');
                 
                 if (this.accessToken) {
                     loginSection.classList.add('hidden');
                     loggedInSection.classList.remove('hidden');
-                    testApiBtn.disabled = false;
                     
                     if (this.userInfo) {
                         document.getElementById('userInfo').innerHTML = `
@@ -573,7 +419,6 @@
                 } else {
                     loginSection.classList.remove('hidden');
                     loggedInSection.classList.add('hidden');
-                    testApiBtn.disabled = true;
                 }
                 
                 this.hideError();
@@ -610,25 +455,6 @@
                        Math.random().toString(36).substring(2, 15);
             }
 
-            generateCodeVerifier() {
-                const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-                let text = '';
-                for (let i = 0; i < 128; i++) {
-                    text += possible.charAt(Math.floor(Math.random() * possible.length));
-                }
-                return text;
-            }
-
-            async generateCodeChallenge(codeVerifier) {
-                const encoder = new TextEncoder();
-                const data = encoder.encode(codeVerifier);
-                const digest = await crypto.subtle.digest('SHA-256', data);
-                
-                return btoa(String.fromCharCode(...new Uint8Array(digest)))
-                    .replace(/\+/g, '-')
-                    .replace(/\//g, '_')
-                    .replace(/=/g, '');
-            }
         }
 
         // グローバル関数（ボタンから呼び出し用）
@@ -646,21 +472,6 @@
             app.startOAuth2Login();
         }
 
-        function startPKCELogin() {
-            app.startPKCELogin();
-        }
-
-        function refreshToken() {
-            app.refreshToken();
-        }
-
-        function revokeToken() {
-            app.revokeToken();
-        }
-
-        function testProtectedAPI() {
-            app.testProtectedAPI();
-        }
 
         function logout() {
             app.logout();

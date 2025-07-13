@@ -531,3 +531,45 @@ func getDisplayName(displayName, username string) string {
 	}
 	return username
 }
+
+// GetMe handles requests to get the current user's information based on JWT token
+func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.writeErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// Extract user ID from JWT token (set by authentication middleware)
+	userID := r.Header.Get("X-User-ID")
+	if userID == "" {
+		h.writeErrorResponse(w, http.StatusUnauthorized, "user not authenticated")
+		return
+	}
+
+	user, err := h.userService.GetUserByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			h.writeErrorResponse(w, http.StatusNotFound, "user not found")
+			return
+		}
+		h.writeErrorResponse(w, http.StatusInternalServerError, "failed to get user")
+		return
+	}
+
+	userResp := UserResponse{
+		ID:            user.ID,
+		Username:      user.Username,
+		Email:         user.Email,
+		EmailVerified: user.EmailVerified,
+		IsActive:      user.IsActive(),
+		CreatedAt:     user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(SuccessResponse{
+		Success: true,
+		User:    userResp,
+	})
+}

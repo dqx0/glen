@@ -48,6 +48,12 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 				a.writeUnauthorizedResponse(w, "invalid API key")
 				return
 			}
+			
+			// API KeyからユーザーIDを取得してヘッダーに設定
+			if userID := a.extractUserIDFromAPIKey(apiKey); userID != "" {
+				log.Printf("Auth Middleware: Setting X-User-ID from API Key: %s", userID)
+				r.Header.Set("X-User-ID", userID)
+			}
 		} else {
 			a.writeUnauthorizedResponse(w, "unsupported authorization type")
 			return
@@ -60,8 +66,17 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 		// ユーザーIDをヘッダーに設定（プロキシ用）
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			token := authHeader[7:]
+			log.Printf("Auth Middleware: Processing Bearer token for request: %s %s", r.Method, r.URL.Path)
+			tokenPreview := token
+			if len(token) > 20 {
+				tokenPreview = token[:20]
+			}
+			log.Printf("Auth Middleware: Extracting user ID from token: %s...", tokenPreview)
 			if userID := a.extractUserIDFromToken(token); userID != "" {
+				log.Printf("Auth Middleware: Setting X-User-ID header: %s for request: %s %s", userID, r.Method, r.URL.Path)
 				r.Header.Set("X-User-ID", userID)
+			} else {
+				log.Printf("Auth Middleware: Failed to extract user ID from token for request: %s %s", r.Method, r.URL.Path)
 			}
 		}
 		
@@ -262,6 +277,66 @@ func (a *AuthMiddleware) validateAPIKey(apiKey string) bool {
 	
 	// 開発段階では true を返す
 	return true
+}
+
+// extractUserIDFromAPIKey はAPIキーからユーザーIDを抽出する
+func (a *AuthMiddleware) extractUserIDFromAPIKey(apiKey string) string {
+	// Auth Serviceの validate-api-key エンドポイントにリクエストを送信
+	validateURL := a.authServiceURL + "/api/v1/auth/validate-api-key"
+	
+	// リクエストボディを構築
+	requestData := map[string]string{
+		"api_key": apiKey,
+	}
+	
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		log.Printf("Failed to marshal API key validation request: %v", err)
+		return ""
+	}
+	
+	req, err := http.NewRequest("POST", validateURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Failed to create API key validation request: %v", err)
+		return ""
+	}
+	
+	req.Header.Set("Content-Type", "application/json")
+	
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to call API key validation endpoint: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("API key validation endpoint returned status: %d", resp.StatusCode)
+		return ""
+	}
+	
+	var validateResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&validateResp); err != nil {
+		log.Printf("Failed to decode API key validation response: %v", err)
+		return ""
+	}
+	
+	// Check if API key is valid and extract user ID
+	valid, ok := validateResp["valid"].(bool)
+	if !ok || !valid {
+		log.Printf("API key is not valid")
+		return ""
+	}
+	
+	userID, ok := validateResp["user_id"].(string)
+	if !ok {
+		log.Printf("No user_id field in API key validation response")
+		return ""
+	}
+	
+	log.Printf("Extracted user ID from API key: %s", userID)
+	return userID
 }
 
 // writeUnauthorizedResponse は認証エラーレスポンスを書き込む

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -146,9 +147,21 @@ func isDevMode() bool {
 // DevModeMiddleware provides a development-only bypass for authentication
 func DevModeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// In dev mode, set a test user ID for WebAuthn operations (UUID v4 format)
-		testUserID := "caa7cc0e-accd-4a79-8354-0f60c01c7a38"
-		ctx := context.WithValue(r.Context(), UserIDKey, testUserID)
+		// In dev mode, get user ID from X-User-ID header (set by API Gateway auth middleware)
+		userID := r.Header.Get("X-User-ID")
+		
+		// Debug log for WebAuthn middleware
+		log.Printf("WebAuthn DevMode: Request %s %s, X-User-ID header: '%s'", r.Method, r.URL.Path, userID)
+		
+		// If no user ID is present, this means the user is not authenticated
+		if userID == "" {
+			log.Printf("WebAuthn DevMode: No X-User-ID header found, returning 401")
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		
+		log.Printf("WebAuthn DevMode: Setting user ID in context: %s", userID)
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		ctx = context.WithValue(ctx, IsAdminKey, false)
 		
 		next.ServeHTTP(w, r.WithContext(ctx))

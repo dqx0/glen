@@ -333,6 +333,18 @@ func (h *OAuth2Handler) GetClients(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorization check: ensure authenticated user can only access their own OAuth2 clients
+	authenticatedUserID := r.Header.Get("X-User-ID")
+	if authenticatedUserID == "" {
+		h.writeOAuth2Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	if authenticatedUserID != userID {
+		h.writeOAuth2Error(w, http.StatusForbidden, "access_denied", "Access denied: can only access your own OAuth2 clients")
+		return
+	}
+
 	// Get clients for user
 	clients, err := h.oauth2Service.GetClientsByUserID(r.Context(), userID)
 	if err != nil {

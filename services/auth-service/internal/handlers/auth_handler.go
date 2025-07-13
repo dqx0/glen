@@ -190,6 +190,18 @@ func (h *AuthHandler) ListTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorization check: ensure authenticated user can only access their own tokens
+	authenticatedUserID := r.Header.Get("X-User-ID")
+	if authenticatedUserID == "" {
+		h.writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+
+	if authenticatedUserID != userID {
+		h.writeError(w, http.StatusForbidden, "access denied: can only access your own tokens")
+		return
+	}
+
 	tokens, err := h.authService.ListUserTokens(r.Context(), userID)
 	if err != nil {
 		h.handleServiceError(w, err)

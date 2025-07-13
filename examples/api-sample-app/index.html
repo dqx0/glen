@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glen API Sample App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        .auth-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-success:hover {
+            background: #218838;
+        }
+        .user-info {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .hidden {
+            display: none;
+        }
+        .config-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        .config-input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .logs {
+            background: #343a40;
+            color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 20px 0;
+        }
+        .api-result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .api-section {
+            margin: 20px 0;
+        }
+        .api-method {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-right: 10px;
+        }
+        .method-get {
+            background: #007bff;
+            color: white;
+        }
+        .method-post {
+            background: #28a745;
+            color: white;
+        }
+        .method-put {
+            background: #ffc107;
+            color: black;
+        }
+        .method-delete {
+            background: #dc3545;
+            color: white;
+        }
+        .endpoint-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .endpoint-header {
+            background: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+            cursor: pointer;
+        }
+        .endpoint-content {
+            padding: 15px;
+            display: none;
+        }
+        .endpoint-content.active {
+            display: block;
+        }
+        .request-body {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Glen API Sample App</h1>
+            <p>Glen ID Platform の API 機能をテストするためのサンプルアプリケーション</p>
+        </div>
+
+        <div class="config-section">
+            <h3>📝 設定</h3>
+            <label>Glen API Base URL:</label>
+            <input type="text" id="apiBaseUrl" class="config-input" value="http://localhost:8080/api/v1">
+            
+            <label>API Key:</label>
+            <input type="text" id="apiKey" class="config-input" placeholder="your-api-key">
+            
+            <button onclick="saveConfig()" class="btn">設定を保存</button>
+        </div>
+
+        <div class="auth-section">
+            <h3>🔑 認証状態</h3>
+            
+            <div id="unauthenticatedSection">
+                <p>API Key を設定して認証してください。</p>
+                <button onclick="testApiKey()" class="btn">API Key をテスト</button>
+            </div>
+
+            <div id="authenticatedSection" class="hidden">
+                <div class="user-info">
+                    <h4>✅ API Key 認証成功!</h4>
+                    <div id="apiKeyInfo"></div>
+                </div>
+                <button onclick="logout()" class="btn btn-danger">ログアウト</button>
+            </div>
+
+            <div id="errorSection" class="error hidden">
+                <h4>❌ エラー</h4>
+                <div id="errorMessage"></div>
+            </div>
+        </div>
+
+        <div class="api-section">
+            <h3>📋 API エンドポイント</h3>
+            
+            <!-- User API -->
+            <div class="endpoint-card">
+                <div class="endpoint-header" onclick="toggleEndpoint('users')">
+                    <span class="api-method method-get">GET</span>
+                    <span>/users/me</span>
+                    <span style="float: right;">👤 ユーザー情報取得</span>
+                </div>
+                <div id="users-content" class="endpoint-content">
+                    <p>現在認証されているユーザーの情報を取得します。</p>
+                    <button onclick="apiCall('GET', '/users/me', 'users-result')" class="btn btn-success">実行</button>
+                    <div id="users-result" class="api-result"></div>
+                </div>
+            </div>
+
+            <!-- Auth API -->
+            <div class="endpoint-card">
+                <div class="endpoint-header" onclick="toggleEndpoint('tokens')">
+                    <span class="api-method method-get">GET</span>
+                    <span>/auth/tokens</span>
+                    <span style="float: right;">🔑 トークン一覧</span>
+                </div>
+                <div id="tokens-content" class="endpoint-content">
+                    <p>ユーザーのアクティブなトークン一覧を取得します。</p>
+                    <label>User ID:</label>
+                    <input type="text" id="userIdInput" class="config-input" placeholder="user-id">
+                    <button onclick="getTokens()" class="btn btn-success">実行</button>
+                    <div id="tokens-result" class="api-result"></div>
+                </div>
+            </div>
+
+            <!-- API Key Creation -->
+            <div class="endpoint-card">
+                <div class="endpoint-header" onclick="toggleEndpoint('create-key')">
+                    <span class="api-method method-post">POST</span>
+                    <span>/auth/api-keys</span>
+                    <span style="float: right;">🔐 API Key 作成</span>
+                </div>
+                <div id="create-key-content" class="endpoint-content">
+                    <p>新しい API Key を作成します。</p>
+                    <label>User ID:</label>
+                    <input type="text" id="createUserIdInput" class="config-input" placeholder="user-id">
+                    <label>Description:</label>
+                    <input type="text" id="descriptionInput" class="config-input" placeholder="API Key の説明">
+                    <label>Expires In (seconds):</label>
+                    <input type="number" id="expiresInInput" class="config-input" value="3600" placeholder="3600">
+                    <button onclick="createApiKey()" class="btn btn-success">作成</button>
+                    <div id="create-key-result" class="api-result"></div>
+                </div>
+            </div>
+
+            <!-- Token Revocation -->
+            <div class="endpoint-card">
+                <div class="endpoint-header" onclick="toggleEndpoint('revoke')">
+                    <span class="api-method method-post">POST</span>
+                    <span>/auth/revoke</span>
+                    <span style="float: right;">🚫 トークン無効化</span>
+                </div>
+                <div id="revoke-content" class="endpoint-content">
+                    <p>指定したトークンを無効化します。</p>
+                    <label>Token:</label>
+                    <input type="text" id="revokeTokenInput" class="config-input" placeholder="token-to-revoke">
+                    <button onclick="revokeToken()" class="btn btn-danger">無効化</button>
+                    <div id="revoke-result" class="api-result"></div>
+                </div>
+            </div>
+
+            <!-- Social Providers -->
+            <div class="endpoint-card">
+                <div class="endpoint-header" onclick="toggleEndpoint('social')">
+                    <span class="api-method method-get">GET</span>
+                    <span>/social/providers</span>
+                    <span style="float: right;">🔗 ソーシャルプロバイダー</span>
+                </div>
+                <div id="social-content" class="endpoint-content">
+                    <p>利用可能なソーシャルログインプロバイダーを取得します。</p>
+                    <button onclick="apiCall('GET', '/social/providers', 'social-result')" class="btn btn-success">実行</button>
+                    <div id="social-result" class="api-result"></div>
+                </div>
+            </div>
+
+            <!-- OAuth2 Clients -->
+            <div class="endpoint-card">
+                <div class="endpoint-header" onclick="toggleEndpoint('oauth2-clients')">
+                    <span class="api-method method-get">GET</span>
+                    <span>/oauth2/clients</span>
+                    <span style="float: right;">🔐 OAuth2 クライアント</span>
+                </div>
+                <div id="oauth2-clients-content" class="endpoint-content">
+                    <p>OAuth2 クライアント一覧を取得します。</p>
+                    <label>User ID:</label>
+                    <input type="text" id="oauth2UserIdInput" class="config-input" placeholder="user-id (optional)">
+                    <button onclick="getOAuth2Clients()" class="btn btn-success">実行</button>
+                    <div id="oauth2-clients-result" class="api-result"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="logs">
+            <h4>📋 ログ</h4>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <script>
+        class ApiSampleApp {
+            constructor() {
+                this.config = this.loadConfig();
+                this.authenticated = false;
+                this.currentUserInfo = null; // 現在のユーザー情報を保存
+                
+                this.init();
+            }
+
+            init() {
+                this.log('API Sample App 初期化中...');
+                
+                // 設定をUIに反映
+                this.updateConfigUI();
+                
+                // API Key の状態を確認
+                if (this.config.apiKey) {
+                    this.testApiKey();
+                }
+            }
+
+            loadConfig() {
+                const saved = localStorage.getItem('api_sample_config');
+                return saved ? JSON.parse(saved) : {
+                    apiBaseUrl: 'http://localhost:8080/api/v1',
+                    apiKey: ''
+                };
+            }
+
+            saveConfig() {
+                this.config.apiBaseUrl = document.getElementById('apiBaseUrl').value;
+                this.config.apiKey = document.getElementById('apiKey').value;
+                
+                localStorage.setItem('api_sample_config', JSON.stringify(this.config));
+                this.log('設定を保存しました');
+            }
+
+            updateConfigUI() {
+                document.getElementById('apiBaseUrl').value = this.config.apiBaseUrl;
+                document.getElementById('apiKey').value = this.config.apiKey;
+            }
+
+            async testApiKey() {
+                if (!this.config.apiKey) {
+                    this.showError('API Key が設定されていません');
+                    return;
+                }
+
+                this.log('API Key をテスト中...');
+                
+                try {
+                    const response = await this.makeApiCall('POST', '/auth/validate-api-key', {
+                        api_key: this.config.apiKey
+                    });
+
+                    this.log('API Key validation response: ' + JSON.stringify(response));
+
+                    if (response.valid || response.success) {
+                        this.authenticated = true;
+                        this.updateAuthUI();
+                        this.log('API Key 認証成功');
+                        
+                        document.getElementById('apiKeyInfo').innerHTML = `
+                            <strong>API Key:</strong> ${this.config.apiKey.substring(0, 20)}...<br>
+                            <strong>ユーザーID:</strong> ${response.user_id || 'N/A'}<br>
+                            <strong>名前:</strong> ${response.name || 'N/A'}<br>
+                            <strong>スコープ:</strong> ${response.scopes ? response.scopes.join(', ') : 'N/A'}<br>
+                            <strong>有効期限:</strong> ${response.expires_at || 'N/A'}
+                        `;
+                    } else {
+                        this.showError('API Key の認証に失敗しました: ' + JSON.stringify(response));
+                    }
+                } catch (error) {
+                    this.showError('API Key テストエラー: ' + error.message);
+                }
+            }
+
+            async makeApiCall(method, endpoint, body = null) {
+                const url = this.config.apiBaseUrl + endpoint;
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+
+                if (this.config.apiKey) {
+                    options.headers['Authorization'] = `ApiKey ${this.config.apiKey}`;
+                }
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                this.log(`${method} ${endpoint}`);
+                console.log('Request:', options);
+
+                const response = await fetch(url, options);
+                const data = await response.json();
+
+                this.log(`Response status: ${response.status}`);
+                this.log(`Response data: ${JSON.stringify(data)}`);
+
+                if (!response.ok) {
+                    throw new Error(`${response.status}: ${data.error || response.statusText}`);
+                }
+
+                return data;
+            }
+
+            async apiCall(method, endpoint, resultElementId = null) {
+                if (!this.authenticated) {
+                    this.showError('API Key 認証が必要です');
+                    return;
+                }
+
+                // デフォルトの結果表示要素IDを生成
+                if (!resultElementId) {
+                    // エンドポイントからIDを生成（例: /users/me -> users-me-result）
+                    const endpointKey = endpoint.replace(/^\//, '').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+                    resultElementId = endpointKey + '-result';
+                }
+
+                try {
+                    const result = await this.makeApiCall(method, endpoint);
+                    
+                    // /users/me の場合、ユーザー情報を保存
+                    if (endpoint === '/users/me' && result.user) {
+                        this.currentUserInfo = result.user;
+                        this.log('ユーザー情報を保存しました: ' + result.user.username);
+                    }
+                    
+                    const resultElement = document.getElementById(resultElementId);
+                    if (resultElement) {
+                        resultElement.textContent = JSON.stringify(result, null, 2);
+                    }
+                    
+                    this.log(`${method} ${endpoint} - 成功`);
+                } catch (error) {
+                    const resultElement = document.getElementById(resultElementId);
+                    if (resultElement) {
+                        resultElement.textContent = `エラー: ${error.message}`;
+                    }
+                    
+                    this.log(`${method} ${endpoint} - エラー: ${error.message}`);
+                }
+            }
+
+            async getTokens() {
+                let userId = document.getElementById('userIdInput').value;
+                
+                // User IDが入力されていない場合、認証されたユーザーのIDを使用
+                if (!userId && this.currentUserInfo && this.currentUserInfo.id) {
+                    userId = this.currentUserInfo.id;
+                    document.getElementById('userIdInput').value = userId;
+                    this.log('自動的に現在のユーザーIDを設定: ' + userId);
+                }
+                
+                if (!userId) {
+                    this.showError('User ID を入力してください');
+                    return;
+                }
+
+                await this.apiCall('GET', `/auth/tokens?user_id=${userId}`, 'tokens-result');
+            }
+
+            async createApiKey() {
+                let userId = document.getElementById('createUserIdInput').value;
+                const description = document.getElementById('descriptionInput').value;
+                const expiresIn = parseInt(document.getElementById('expiresInInput').value);
+
+                // User IDが入力されていない場合、認証されたユーザーのIDを使用
+                if (!userId && this.currentUserInfo && this.currentUserInfo.id) {
+                    userId = this.currentUserInfo.id;
+                    document.getElementById('createUserIdInput').value = userId;
+                    this.log('自動的に現在のユーザーIDを設定: ' + userId);
+                }
+
+                if (!userId) {
+                    this.showError('User ID を入力してください');
+                    return;
+                }
+
+                try {
+                    const result = await this.makeApiCall('POST', '/auth/api-keys', {
+                        user_id: userId,
+                        description: description || 'API Sample App で作成',
+                        expires_in: expiresIn || 3600
+                    });
+                    
+                    document.getElementById('create-key-result').textContent = JSON.stringify(result, null, 2);
+                    this.log('API Key 作成成功');
+                } catch (error) {
+                    document.getElementById('create-key-result').textContent = `エラー: ${error.message}`;
+                    this.log('API Key 作成エラー: ' + error.message);
+                }
+            }
+
+            async revokeToken() {
+                const token = document.getElementById('revokeTokenInput').value;
+                if (!token) {
+                    this.showError('無効化するトークンを入力してください');
+                    return;
+                }
+
+                try {
+                    const result = await this.makeApiCall('POST', '/auth/revoke', {
+                        token: token
+                    });
+                    
+                    document.getElementById('revoke-result').textContent = JSON.stringify(result, null, 2);
+                    this.log('トークン無効化成功');
+                } catch (error) {
+                    document.getElementById('revoke-result').textContent = `エラー: ${error.message}`;
+                    this.log('トークン無効化エラー: ' + error.message);
+                }
+            }
+
+            async getOAuth2Clients() {
+                let userId = document.getElementById('oauth2UserIdInput').value;
+                
+                // User IDが入力されていない場合、認証されたユーザーのIDを使用
+                if (!userId && this.currentUserInfo && this.currentUserInfo.id) {
+                    userId = this.currentUserInfo.id;
+                    document.getElementById('oauth2UserIdInput').value = userId;
+                    this.log('自動的に現在のユーザーIDを設定: ' + userId);
+                }
+                
+                if (!userId) {
+                    this.showError('User ID が必要です。先に /users/me でユーザー情報を取得してください。');
+                    return;
+                }
+                
+                const endpoint = `/oauth2/clients?user_id=${userId}`;
+                await this.apiCall('GET', endpoint, 'oauth2-clients-result');
+            }
+
+            updateAuthUI() {
+                const unauthenticatedSection = document.getElementById('unauthenticatedSection');
+                const authenticatedSection = document.getElementById('authenticatedSection');
+                
+                if (this.authenticated) {
+                    unauthenticatedSection.classList.add('hidden');
+                    authenticatedSection.classList.remove('hidden');
+                } else {
+                    unauthenticatedSection.classList.remove('hidden');
+                    authenticatedSection.classList.add('hidden');
+                }
+                
+                this.hideError();
+            }
+
+            logout() {
+                this.authenticated = false;
+                this.updateAuthUI();
+                this.log('ログアウトしました');
+            }
+
+            showError(message) {
+                const errorSection = document.getElementById('errorSection');
+                const errorMessage = document.getElementById('errorMessage');
+                
+                errorMessage.textContent = message;
+                errorSection.classList.remove('hidden');
+                
+                this.log('エラー: ' + message);
+            }
+
+            hideError() {
+                document.getElementById('errorSection').classList.add('hidden');
+            }
+
+            log(message) {
+                const timestamp = new Date().toLocaleTimeString();
+                const logElement = document.getElementById('logs');
+                logElement.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+                logElement.scrollTop = logElement.scrollHeight;
+                console.log('[ApiSample]', message);
+            }
+        }
+
+        // エンドポイントカードの開閉
+        function toggleEndpoint(endpointId) {
+            const content = document.getElementById(endpointId + '-content');
+            if (content.classList.contains('active')) {
+                content.classList.remove('active');
+            } else {
+                // 他のすべてを閉じる
+                document.querySelectorAll('.endpoint-content').forEach(el => {
+                    el.classList.remove('active');
+                });
+                // 選択されたものを開く
+                content.classList.add('active');
+            }
+        }
+
+        // グローバル関数（ボタンから呼び出し用）
+        let app;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            app = new ApiSampleApp();
+        });
+
+        function saveConfig() {
+            app.saveConfig();
+        }
+
+        function testApiKey() {
+            app.testApiKey();
+        }
+
+        function logout() {
+            app.logout();
+        }
+
+        function apiCall(method, endpoint, resultElementId = null) {
+            app.apiCall(method, endpoint, resultElementId);
+        }
+
+        function getTokens() {
+            app.getTokens();
+        }
+
+        function createApiKey() {
+            app.createApiKey();
+        }
+
+        function revokeToken() {
+            app.revokeToken();
+        }
+
+        function getOAuth2Clients() {
+            app.getOAuth2Clients();
+        }
+    </script>
+</body>
+</html>

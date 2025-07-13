@@ -32,7 +32,23 @@ const Login: React.FC = () => {
         
         if (redirectUri) {
           console.log('Login component - redirecting to:', redirectUri);
-          navigate(redirectUri);
+          // OAuth2フロー用に認証トークンをクエリパラメータで含めてリダイレクト
+          const token = localStorage.getItem('accessToken');
+          console.log('Login component - auth_token from localStorage:', token ? token.substring(0, 20) + '...' : 'null');
+          // デバッグ用: リダイレクト前に一時停止
+          if (!token) {
+            alert('No auth_token found in localStorage!');
+          }
+          if (token) {
+            const url = new URL(redirectUri);
+            url.searchParams.set('auth_token', token);
+            const finalUrl = url.toString();
+            console.log('Login component - final redirect URL:', finalUrl.substring(0, 100) + '...');
+            window.location.href = finalUrl;
+          } else {
+            console.log('Login component - no token found, redirecting without auth_token');
+            window.location.href = redirectUri;
+          }
         } else {
           console.log('Login component - navigating to dashboard');
           navigate('/dashboard');

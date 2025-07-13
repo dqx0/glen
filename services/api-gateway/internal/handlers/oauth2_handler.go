@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -63,21 +64,46 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		h.redirectToLogin(w, r, req)
 		return
 	}
-
-	// POST かつ consent=approve の場合、認可処理を実行
-	if r.Method == http.MethodPost && r.FormValue("consent") == "approve" {
-		h.processAuthorization(w, r, userID, req)
-		return
+	
+	// GETリクエストで同意パラメータがある場合の処理
+	if r.Method == http.MethodGet && r.URL.Query().Get("consent") != "" {
+		consent := r.URL.Query().Get("consent")
+		if consent == "approve" {
+			h.processAuthorization(w, r, userID, req)
+			return
+		}
+		if consent == "deny" {
+			h.redirectWithError(w, r, req.RedirectURI, req.State, "access_denied", "User denied authorization")
+			return
+		}
 	}
 
-	// POST かつ consent=deny の場合、拒否処理
-	if r.Method == http.MethodPost && r.FormValue("consent") == "deny" {
-		h.redirectWithError(w, r, req.RedirectURI, req.State, "access_denied", "User denied authorization")
-		return
+	// POST の場合（フロントエンドからの同意結果）
+	if r.Method == http.MethodPost {
+		// フロントエンドからのPOSTの場合、Authorizationヘッダーからユーザー認証
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			if frontendUserID := h.extractUserIDFromJWT(token); frontendUserID != "" {
+				userID = frontendUserID
+				log.Printf("OAuth2 Gateway: Using user ID from Authorization header: %s", userID)
+			}
+		}
+		
+		if r.FormValue("consent") == "approve" {
+			h.processAuthorization(w, r, userID, req)
+			return
+		}
+		
+		if r.FormValue("consent") == "deny" {
+			// 図に従って、拒否時は最初からやり直し（サンプルアプリに戻る）
+			h.redirectWithError(w, r, req.RedirectURI, req.State, "access_denied", "User denied authorization")
+			return
+		}
 	}
 
-	// GETまたは認証済みの場合、同意画面を表示
-	h.showConsentScreen(w, req, userID)
+	// GETまたは認証済みの場合、フロントエンドの同意画面にリダイレクト
+	h.redirectToConsentScreen(w, r, req, userID)
 }
 
 // parseAuthorizeParams はURLパラメータまたはフォームデータからAuthorizeRequestを構築
@@ -93,9 +119,48 @@ func (h *OAuth2Handler) parseAuthorizeParams(values url.Values) AuthorizeRequest
 	}
 }
 
-// getUserIDFromSession はセッションからユーザーIDを取得
+// getUserIDFromSession はセッション、Authorizationヘッダー、またはクエリパラメータからユーザーIDを取得
 func (h *OAuth2Handler) getUserIDFromSession(r *http.Request) string {
-	// glen_sessionクッキーをチェック
+	// まずクエリパラメータからauth_tokenをチェック（OAuth2ログイン後）
+	authToken := r.URL.Query().Get("auth_token")
+	if authToken != "" {
+		log.Printf("OAuth2 Gateway: Found auth_token in query params: %s...", authToken[:20])
+		
+		// JWT トークンの場合は、デコードしてユーザーIDを取得する
+		if userID := h.extractUserIDFromJWT(authToken); userID != "" {
+			log.Printf("OAuth2 Gateway: Extracted user ID from JWT: %s", userID)
+			return userID
+		}
+		
+		// トークンからユーザーIDを抽出（簡単な形式: "session_user_username_username"）
+		if strings.HasPrefix(authToken, "session_user_") {
+			parts := strings.Split(authToken, "_")
+			if len(parts) >= 3 {
+				userID := "user_" + parts[2]
+				log.Printf("OAuth2 Gateway: Extracted user ID from auth_token: %s", userID)
+				return userID
+			}
+		}
+	}
+
+	// 次にAuthorizationヘッダーをチェック（OAuth2フロー用）
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		log.Printf("OAuth2 Gateway: Found Authorization header with token")
+		
+		// トークンからユーザーIDを抽出（簡単な形式: "session_user_username_username"）
+		if strings.HasPrefix(token, "session_user_") {
+			parts := strings.Split(token, "_")
+			if len(parts) >= 3 {
+				userID := "user_" + parts[2]
+				log.Printf("OAuth2 Gateway: Extracted user ID from token: %s", userID)
+				return userID
+			}
+		}
+	}
+
+	// 次にglen_sessionクッキーをチェック
 	cookie, err := r.Cookie("glen_session")
 	if err != nil {
 		log.Printf("OAuth2 Gateway: No glen_session cookie found")
@@ -108,12 +173,12 @@ func (h *OAuth2Handler) getUserIDFromSession(r *http.Request) string {
 		parts := strings.Split(cookie.Value, "_")
 		if len(parts) >= 3 {
 			userID := "user_" + parts[2]
-			log.Printf("OAuth2 Gateway: Extracted user ID: %s", userID)
+			log.Printf("OAuth2 Gateway: Extracted user ID from cookie: %s", userID)
 			return userID
 		}
 	}
 
-	log.Printf("OAuth2 Gateway: Could not extract user ID from session")
+	log.Printf("OAuth2 Gateway: Could not extract user ID from session or auth header")
 	return ""
 }
 
@@ -206,83 +271,28 @@ func (h *OAuth2Handler) processAuthorization(w http.ResponseWriter, r *http.Requ
 	h.redirectWithCode(w, r, req.RedirectURI, authResponse.Code, authResponse.State)
 }
 
-// showConsentScreen は同意画面を表示
-func (h *OAuth2Handler) showConsentScreen(w http.ResponseWriter, req AuthorizeRequest, userID string) {
-	// シンプルな同意画面のHTML
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html>
-<head>
-    <title>Glen OAuth2 - Authorization</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 500px; margin: 100px auto; padding: 20px; background: #f5f5f5; }
-        .consent-card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .title { text-align: center; margin-bottom: 30px; color: #333; }
-        .app-info { background: #e3f2fd; padding: 20px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #2196f3; }
-        .permissions { margin: 20px 0; }
-        .permission-item { padding: 10px 0; border-bottom: 1px solid #eee; }
-        .permission-item:last-child { border-bottom: none; }
-        .buttons { display: flex; gap: 10px; margin-top: 30px; }
-        .btn { padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; flex: 1; }
-        .btn-approve { background: #4caf50; color: white; }
-        .btn-approve:hover { background: #45a049; }
-        .btn-deny { background: #f44336; color: white; }
-        .btn-deny:hover { background: #da190b; }
-        .user-info { text-align: center; margin-bottom: 20px; color: #666; }
-    </style>
-</head>
-<body>
-    <div class="consent-card">
-        <h2 class="title">🔐 Glen OAuth2 Authorization</h2>
-        
-        <div class="user-info">
-            Logged in as: <strong>%s</strong>
-        </div>
-        
-        <div class="app-info">
-            <h3>Authorization Request</h3>
-            <p><strong>Application:</strong> %s</p>
-            <p>This application is requesting access to your account.</p>
-        </div>
-        
-        <div class="permissions">
-            <h4>Requested Permissions:</h4>
-            <div class="permission-item">
-                <strong>%s</strong>
-            </div>
-        </div>
-        
-        <div class="buttons">
-            <form method="POST" style="flex: 1;">
-                <input type="hidden" name="client_id" value="%s">
-                <input type="hidden" name="redirect_uri" value="%s">
-                <input type="hidden" name="response_type" value="%s">
-                <input type="hidden" name="scope" value="%s">
-                <input type="hidden" name="state" value="%s">
-                <input type="hidden" name="code_challenge" value="%s">
-                <input type="hidden" name="code_challenge_method" value="%s">
-                <input type="hidden" name="consent" value="approve">
-                <button type="submit" class="btn btn-approve">Allow</button>
-            </form>
-            
-            <form method="POST" style="flex: 1;">
-                <input type="hidden" name="client_id" value="%s">
-                <input type="hidden" name="redirect_uri" value="%s">
-                <input type="hidden" name="state" value="%s">
-                <input type="hidden" name="consent" value="deny">
-                <button type="submit" class="btn btn-deny">Deny</button>
-            </form>
-        </div>
-    </div>
-</body>
-</html>`, userID, req.ClientID, req.Scope, 
-		req.ClientID, req.RedirectURI, req.ResponseType, req.Scope, req.State, req.CodeChallenge, req.CodeChallengeMethod,
-		req.ClientID, req.RedirectURI, req.State)
-
-	w.Header().Set("Content-Type", "text/html")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(html))
+// redirectToConsentScreen はフロントエンドの同意画面にリダイレクト
+func (h *OAuth2Handler) redirectToConsentScreen(w http.ResponseWriter, r *http.Request, req AuthorizeRequest, userID string) {
+	// フロントエンドの同意画面URLを構築
+	consentBaseURL, _ := url.Parse("http://localhost:5173/oauth2/consent")
+	consentParams := url.Values{}
+	consentParams.Set("client_id", req.ClientID)
+	consentParams.Set("redirect_uri", req.RedirectURI)
+	consentParams.Set("response_type", req.ResponseType)
+	consentParams.Set("scope", req.Scope)
+	consentParams.Set("state", req.State)
+	if req.CodeChallenge != "" {
+		consentParams.Set("code_challenge", req.CodeChallenge)
+		consentParams.Set("code_challenge_method", req.CodeChallengeMethod)
+	}
+	// ユーザーIDも渡す
+	consentParams.Set("user_id", userID)
+	
+	consentBaseURL.RawQuery = consentParams.Encode()
+	consentURL := consentBaseURL.String()
+	
+	log.Printf("OAuth2 Gateway: Redirecting to consent screen: %s", consentURL)
+	http.Redirect(w, r, consentURL, http.StatusFound)
 }
 
 // redirectWithCode は認可コードと共にクライアントにリダイレクト
@@ -338,4 +348,43 @@ func (h *OAuth2Handler) writeError(w http.ResponseWriter, statusCode int, errorC
 	}
 	
 	json.NewEncoder(w).Encode(response)
+}
+
+// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出（簡易版、署名検証なし）
+func (h *OAuth2Handler) extractUserIDFromJWT(token string) string {
+	// JWT形式: header.payload.signature
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		log.Printf("OAuth2 Gateway: Invalid JWT format")
+		return ""
+	}
+	
+	// ペイロード部分をデコード
+	payload := parts[1]
+	// Base64 URL デコード用にパディングを追加
+	if len(payload)%4 != 0 {
+		payload += strings.Repeat("=", 4-len(payload)%4)
+	}
+	
+	decoded, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		log.Printf("OAuth2 Gateway: Failed to decode JWT payload: %v", err)
+		return ""
+	}
+	
+	// JSONをパース
+	var claims map[string]interface{}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		log.Printf("OAuth2 Gateway: Failed to parse JWT claims: %v", err)
+		return ""
+	}
+	
+	// user_idを取得
+	if userID, ok := claims["user_id"].(string); ok {
+		log.Printf("OAuth2 Gateway: Found user_id in JWT: %s", userID)
+		return userID // そのまま返す（既に適切な形式になっている可能性）
+	}
+	
+	log.Printf("OAuth2 Gateway: No user_id found in JWT claims")
+	return ""
 }

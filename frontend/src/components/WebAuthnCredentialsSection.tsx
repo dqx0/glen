@@ -28,6 +28,8 @@ const WebAuthnCredentialsSection: React.FC = () => {
       loadCredentials();
     } else {
       setLoading(false);
+      // ユーザーがログアウトした場合、認証器リストをクリア
+      setCredentials([]);
     }
   }, [user, isSupported]);
 
@@ -52,7 +54,14 @@ const WebAuthnCredentialsSection: React.FC = () => {
       setCredentials(normalizedCredentials);
     } catch (error: any) {
       console.error('Failed to load WebAuthn credentials:', error);
-      setError('WebAuthn認証器の読み込みに失敗しました');
+      
+      // 認証エラーの場合は認証器リストをクリア
+      if (error.response?.status === 401) {
+        setError('認証が必要です。ログインしてください。');
+      } else {
+        setError('WebAuthn認証器の読み込みに失敗しました');
+      }
+      
       // エラー時のフォールバック
       setCredentials([]);
     } finally {
