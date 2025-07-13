@@ -1,12 +1,32 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 )
+
+// CORSRepository defines the interface for CORS origin persistence
+type CORSRepository interface {
+	AddOrigin(ctx context.Context, origin, clientID string) error
+	RemoveOrigin(ctx context.Context, origin string) error
+	GetAllOrigins(ctx context.Context) ([]string, error)
+	RemoveOriginsByClientID(ctx context.Context, clientID string) error
+	GetOriginsByClientID(ctx context.Context, clientID string) ([]string, error)
+}
+
+// OriginStats represents statistics about CORS origins
+type OriginStats struct {
+	TotalOrigins     int            `json:"total_origins"`
+	TotalClients     int            `json:"total_clients"`
+	OriginsPerClient map[string]int `json:"origins_per_client"`
+}
 
 // CORSMiddleware はCORS（Cross-Origin Resource Sharing）を処理するミドルウェア
 type CORSMiddleware struct {
@@ -19,6 +39,9 @@ type CORSMiddleware struct {
 	authServiceURL     string
 	developmentMode    bool
 	allowAnyLocalhost  bool
+	dynamicOrigins     sync.Map // thread-safe map for dynamic origins
+	mutex              sync.RWMutex
+	repository         CORSRepository // for persistence
 }
 
 // NewCORSMiddleware は新しいCORSMiddlewareを作成する
@@ -47,6 +70,13 @@ func NewCORSMiddleware(authServiceURL string) *CORSMiddleware {
 
 	log.Printf("CORS configured: dev=%v, localhost=%v, origins=%d, credentials=%v", 
 		cors.developmentMode, cors.allowAnyLocalhost, len(cors.allowedOrigins), cors.allowCredentials)
+	return cors
+}
+
+// NewCORSMiddlewareWithRepository は永続化機能付きのCORSMiddlewareを作成する
+func NewCORSMiddlewareWithRepository(authServiceURL string, repository CORSRepository) *CORSMiddleware {
+	cors := NewCORSMiddleware(authServiceURL)
+	cors.repository = repository
 	return cors
 }
 
@@ -145,6 +175,11 @@ func (c *CORSMiddleware) isOriginAllowed(origin string) bool {
 		}
 	}
 
+	// 動的オリジンチェック
+	if _, exists := c.dynamicOrigins.Load(origin); exists {
+		return true
+	}
+
 	// OAuth2クライアントのオリジンチェック（本番環境での動的許可）
 	if !c.developmentMode {
 		return c.isOAuth2ClientOrigin(origin)
@@ -163,8 +198,18 @@ func (c *CORSMiddleware) isLocalhostOrigin(origin string) bool {
 
 // isOAuth2ClientOrigin はOAuth2クライアントとして登録されたオリジンかチェックする
 func (c *CORSMiddleware) isOAuth2ClientOrigin(origin string) bool {
-	// TODO: 実装時にOAuth2クライアントのredirect_uriからオリジンを抽出して比較
-	// 現在は安全のためfalseを返す
+	if c.authServiceURL == "" {
+		return false
+	}
+	
+	// OAuth2クライアントAPIを呼び出してオリジンを検証
+	return c.verifyOriginWithAuthService(origin)
+}
+
+// verifyOriginWithAuthService はAuth ServiceのAPIを呼び出してオリジンを検証する
+func (c *CORSMiddleware) verifyOriginWithAuthService(origin string) bool {
+	// HTTP クライアントでAuth Serviceの /api/v1/oauth2/clients/verify-origin エンドポイントを呼び出し
+	// 実装は必要時に追加
 	return false
 }
 
@@ -221,4 +266,209 @@ func getEnvStringSlice(key string, defaultValue []string) []string {
 	}
 	
 	return result
+}
+
+// AddDynamicOrigins は動的にオリジンを許可リストに追加する
+func (c *CORSMiddleware) AddDynamicOrigins(origins []string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	for _, origin := range origins {
+		if c.isValidOrigin(origin) {
+			c.dynamicOrigins.Store(origin, true)
+			log.Printf("CORS: Added dynamic origin: %s", origin)
+		} else {
+			log.Printf("CORS: Rejected invalid origin: %s", origin)
+		}
+	}
+}
+
+// RemoveDynamicOrigins は動的オリジンを許可リストから削除する
+func (c *CORSMiddleware) RemoveDynamicOrigins(origins []string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	for _, origin := range origins {
+		c.dynamicOrigins.Delete(origin)
+		log.Printf("CORS: Removed dynamic origin: %s", origin)
+	}
+}
+
+// GetDynamicOrigins は現在の動的オリジン一覧を取得する（デバッグ用）
+func (c *CORSMiddleware) GetDynamicOrigins() []string {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+	
+	var origins []string
+	c.dynamicOrigins.Range(func(key, value interface{}) bool {
+		if origin, ok := key.(string); ok {
+			origins = append(origins, origin)
+		}
+		return true
+	})
+	
+	return origins
+}
+
+// isValidOrigin はオリジンが有効かどうかをチェックする
+func (c *CORSMiddleware) isValidOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	
+	// 本番環境ではHTTPS必須（localhost除く）
+	if !c.developmentMode && u.Scheme != "https" && !strings.Contains(u.Host, "localhost") && !strings.Contains(u.Host, "127.0.0.1") {
+		return false
+	}
+	
+	// ホスト名が存在することを確認
+	if u.Host == "" {
+		return false
+	}
+	
+	return true
+}
+
+// LoadPersistedOrigins はデータベースから永続化されたオリジンを読み込む
+func (c *CORSMiddleware) LoadPersistedOrigins(ctx context.Context) error {
+	if c.repository == nil {
+		log.Printf("CORS: No repository configured, skipping persistence load")
+		return nil
+	}
+
+	origins, err := c.repository.GetAllOrigins(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load persisted CORS origins: %w", err)
+	}
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	for _, origin := range origins {
+		c.dynamicOrigins.Store(origin, true)
+	}
+
+	log.Printf("CORS: Loaded %d persisted origins from database", len(origins))
+	return nil
+}
+
+// AddDynamicOriginsWithPersistence は動的オリジンを追加し、データベースに永続化する
+func (c *CORSMiddleware) AddDynamicOriginsWithPersistence(ctx context.Context, origins []string, clientID string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	for _, origin := range origins {
+		if c.isValidOrigin(origin) {
+			// Add to memory cache
+			c.dynamicOrigins.Store(origin, true)
+			log.Printf("CORS: Added dynamic origin to memory: %s", origin)
+			
+			// Persist to database
+			if c.repository != nil {
+				if err := c.repository.AddOrigin(ctx, origin, clientID); err != nil {
+					log.Printf("CORS: Failed to persist origin %s: %v", origin, err)
+					// Continue operation even if persistence fails
+				} else {
+					log.Printf("CORS: Persisted dynamic origin: %s for client: %s", origin, clientID)
+				}
+			}
+		} else {
+			log.Printf("CORS: Rejected invalid origin: %s", origin)
+		}
+	}
+}
+
+// RemoveDynamicOriginsWithPersistence は動的オリジンを削除し、データベースからも削除する
+func (c *CORSMiddleware) RemoveDynamicOriginsWithPersistence(ctx context.Context, origins []string) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	for _, origin := range origins {
+		// Remove from memory cache
+		c.dynamicOrigins.Delete(origin)
+		log.Printf("CORS: Removed dynamic origin from memory: %s", origin)
+		
+		// Remove from database
+		if c.repository != nil {
+			if err := c.repository.RemoveOrigin(ctx, origin); err != nil {
+				log.Printf("CORS: Failed to remove persisted origin %s: %v", origin, err)
+				// Continue operation even if persistence fails
+			} else {
+				log.Printf("CORS: Removed persisted dynamic origin: %s", origin)
+			}
+		}
+	}
+}
+
+// RemoveOriginsByClientIDWithPersistence はクライアントIDに関連するオリジンを削除する
+func (c *CORSMiddleware) RemoveOriginsByClientIDWithPersistence(ctx context.Context, clientID string) error {
+	if c.repository == nil {
+		log.Printf("CORS: No repository configured, skipping client origin cleanup")
+		return nil
+	}
+
+	// Get origins for this client before removing them
+	origins, err := c.repository.GetOriginsByClientID(ctx, clientID)
+	if err != nil {
+		return fmt.Errorf("failed to get origins for client %s: %w", clientID, err)
+	}
+
+	// Remove from database
+	if err := c.repository.RemoveOriginsByClientID(ctx, clientID); err != nil {
+		return fmt.Errorf("failed to remove origins for client %s: %w", clientID, err)
+	}
+
+	// Remove from memory cache
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	
+	for _, origin := range origins {
+		c.dynamicOrigins.Delete(origin)
+		log.Printf("CORS: Removed origin %s for deleted client %s", origin, clientID)
+	}
+
+	log.Printf("CORS: Cleaned up %d origins for client: %s", len(origins), clientID)
+	return nil
+}
+
+// GetPersistedOriginStats は永続化されたオリジンの統計情報を取得する
+func (c *CORSMiddleware) GetPersistedOriginStats(ctx context.Context) (map[string]interface{}, error) {
+	if c.repository == nil {
+		return map[string]interface{}{
+			"persistence": "disabled",
+		}, nil
+	}
+
+	// Get basic stats if the repository supports it
+	if statsRepo, ok := c.repository.(interface {
+		GetOriginStats(ctx context.Context) (*OriginStats, error)
+	}); ok {
+		stats, err := statsRepo.GetOriginStats(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get origin stats: %w", err)
+		}
+		
+		return map[string]interface{}{
+			"persistence":        "enabled",
+			"total_origins":      stats.TotalOrigins,
+			"total_clients":      stats.TotalClients,
+			"origins_per_client": stats.OriginsPerClient,
+		}, nil
+	}
+
+	// Fallback to basic count
+	origins, err := c.repository.GetAllOrigins(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all origins: %w", err)
+	}
+
+	return map[string]interface{}{
+		"persistence":   "enabled",
+		"total_origins": len(origins),
+	}, nil
 }

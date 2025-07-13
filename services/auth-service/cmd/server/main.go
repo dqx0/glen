@@ -96,7 +96,12 @@ func main() {
 
 	// OAuth2 dependencies
 	oauth2Repo := oauth2Repository.NewOAuth2Repository(db)
-	oauth2Svc := oauth2Service.NewOAuth2Service(oauth2Repo)
+	
+	// CORS通知機能の設定
+	gatewayURL := getEnvOrDefault("API_GATEWAY_URL", "http://localhost:8080")
+	corsNotifier := oauth2Service.NewHTTPCORSNotifier(gatewayURL)
+	
+	oauth2Svc := oauth2Service.NewOAuth2ServiceWithCORS(oauth2Repo, corsNotifier)
 	oauth2Handler := oauth2Handlers.NewOAuth2Handler(oauth2Svc)
 
 	// Chi ルーターの設定
@@ -206,4 +211,11 @@ func getRedisAddr() string {
 		return addr
 	}
 	return "localhost:6379"
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

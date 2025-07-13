@@ -58,6 +58,7 @@ type APIKeyResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	APIKey    string    `json:"api_key"`
+	Token     string    `json:"token"` // Alias for APIKey for backward compatibility
 	Scopes    []string  `json:"scopes"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -188,10 +189,12 @@ func (s *AuthService) CreateAPIKey(ctx context.Context, userID, name string, sco
 		return nil, err
 	}
 
+	plainToken := apiKey.GetPlainToken()
 	return &APIKeyResponse{
 		ID:        apiKey.ID,
 		Name:      apiKey.Name,
-		APIKey:    apiKey.GetPlainToken(),
+		APIKey:    plainToken,
+		Token:     plainToken, // Populate Token field for backward compatibility
 		Scopes:    apiKey.Scopes,
 		CreatedAt: apiKey.CreatedAt,
 	}, nil

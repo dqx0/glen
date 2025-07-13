@@ -64,7 +64,8 @@ func (env *TestEnvironment) setupTestSchema() {
 		clone_warning BOOLEAN DEFAULT FALSE,
 		created_at DATETIME,
 		updated_at DATETIME,
-		last_used_at DATETIME
+		last_used_at DATETIME,
+		name TEXT NOT NULL DEFAULT 'Security Key'
 	)`
 
 	_, err := env.DB.Exec(createCredentialsTable)
@@ -136,8 +137,8 @@ func (env *TestEnvironment) CreateTestCredential(t *testing.T, userID string) *m
 	query := `
 		INSERT INTO webauthn_credentials (
 			id, user_id, credential_id, public_key, attestation_type,
-			transport, flags, sign_count, clone_warning, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			transport, flags, sign_count, clone_warning, created_at, updated_at, name
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := env.DB.Exec(query,
 		credential.ID,
@@ -151,6 +152,7 @@ func (env *TestEnvironment) CreateTestCredential(t *testing.T, userID string) *m
 		credential.CloneWarning,
 		credential.CreatedAt,
 		credential.UpdatedAt,
+		"Test Security Key", // Default name for test credentials
 	)
 
 	require.NoError(t, err)

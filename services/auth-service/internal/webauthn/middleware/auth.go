@@ -22,7 +22,10 @@ const (
 
 // JWTConfig holds JWT configuration compatible with auth-service
 type JWTConfig struct {
-	jwtService *authService.JWTService
+	jwtService    *authService.JWTService
+	Secret        []byte               `json:"secret"`        // For backward compatibility with tests
+	SigningMethod jwt.SigningMethod    `json:"signing_method"` // For backward compatibility with tests
+	Expiration    time.Duration        `json:"expiration"`    // For backward compatibility with tests
 }
 
 // NewJWTConfig creates a new JWT configuration using auth-service JWT service
@@ -185,33 +188,56 @@ func DefaultJWTConfig() *JWTConfig {
 	// This should be integrated with auth-service's JWT service in production
 	// For now, create a basic config for testing
 	return &JWTConfig{
-		jwtService: nil, // Will use direct JWT operations for testing
+		jwtService:    nil, // Will use direct JWT operations for testing
+		Secret:        []byte("test-secret-key-for-webauthn-middleware"),
+		SigningMethod: jwt.SigningMethodHS256,
+		Expiration:    24 * time.Hour,
 	}
 }
 
 // GenerateToken generates a JWT token for testing purposes
 func GenerateToken(config *JWTConfig, userID string, isAdmin bool) (string, error) {
 	// For testing, use direct JWT operations
+	expiration := config.Expiration
+	if expiration == 0 {
+		expiration = 24 * time.Hour
+	}
+	
 	claims := AuthClaims{
 		UserID:  userID,
 		IsAdmin: isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	secret := []byte("test-secret-key-for-webauthn-middleware")
+	signingMethod := config.SigningMethod
+	if signingMethod == nil {
+		signingMethod = jwt.SigningMethodHS256
+	}
+	
+	token := jwt.NewWithClaims(signingMethod, claims)
+	
+	secret := config.Secret
+	if len(secret) == 0 {
+		secret = []byte("test-secret-key-for-webauthn-middleware")
+	}
+	
 	return token.SignedString(secret)
 }
 
 // ValidateToken validates a JWT token for testing purposes
 func ValidateToken(config *JWTConfig, tokenString string) (*AuthClaims, error) {
 	// For testing, use direct JWT operations
+	secret := config.Secret
+	if len(secret) == 0 {
+		secret = []byte("test-secret-key-for-webauthn-middleware")
+	}
+	
 	token, err := jwt.ParseWithClaims(tokenString, &AuthClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte("test-secret-key-for-webauthn-middleware"), nil
+		return secret, nil
 	})
 
 	if err != nil {

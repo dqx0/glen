@@ -198,7 +198,7 @@ func (lm *LoggingMiddleware) logRequest(info *RequestInfo) {
 		logParts = append(logParts, fmt.Sprintf("ua: %s", truncateString(info.UserAgent, 100)))
 	}
 
-	log.Printf(strings.Join(logParts, " | "))
+	log.Printf("%s", strings.Join(logParts, " | "))
 }
 
 // logResponse はレスポンスログを出力する
@@ -243,7 +243,7 @@ func (lm *LoggingMiddleware) logError(reqInfo *RequestInfo, respInfo *ResponseIn
 		logParts = append(logParts, fmt.Sprintf("headers: {%s}", strings.Join(headerParts, ", ")))
 	}
 
-	log.Printf(strings.Join(logParts, " | "))
+	log.Printf("%s", strings.Join(logParts, " | "))
 
 	// レスポンスボディ
 	if respInfo.Body != "" {

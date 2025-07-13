@@ -64,6 +64,22 @@ func (m *mockWebAuthnService) GetUserCredentials(ctx context.Context, userID str
 	return args.Get(0).([]*models.WebAuthnCredential), args.Error(1)
 }
 
+func (m *mockWebAuthnService) GetCredential(ctx context.Context, credentialID []byte) (*models.WebAuthnCredential, error) {
+	args := m.Called(ctx, credentialID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.WebAuthnCredential), args.Error(1)
+}
+
+func (m *mockWebAuthnService) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.WebAuthnCredential), args.Error(1)
+}
+
 func (m *mockWebAuthnService) UpdateCredential(ctx context.Context, credential *models.WebAuthnCredential) error {
 	args := m.Called(ctx, credential)
 	return args.Error(0)

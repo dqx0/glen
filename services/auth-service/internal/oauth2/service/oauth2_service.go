@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"strings"
 
@@ -73,13 +74,23 @@ type OAuth2RepositoryInterface interface {
 
 // OAuth2Service provides OAuth2 authorization server functionality
 type OAuth2Service struct {
-	repo OAuth2RepositoryInterface
+	repo         OAuth2RepositoryInterface
+	corsNotifier CORSNotifier
 }
 
 // NewOAuth2Service creates a new OAuth2Service
 func NewOAuth2Service(repo OAuth2RepositoryInterface) *OAuth2Service {
 	return &OAuth2Service{
-		repo: repo,
+		repo:         repo,
+		corsNotifier: NewNullCORSNotifier(), // Default to null notifier
+	}
+}
+
+// NewOAuth2ServiceWithCORS creates a new OAuth2Service with CORS notification
+func NewOAuth2ServiceWithCORS(repo OAuth2RepositoryInterface, corsNotifier CORSNotifier) *OAuth2Service {
+	return &OAuth2Service{
+		repo:         repo,
+		corsNotifier: corsNotifier,
 	}
 }
 
@@ -125,6 +136,12 @@ func (s *OAuth2Service) CreateClient(ctx context.Context, userID, name, descript
 		return nil, fmt.Errorf("failed to store client: %w", err)
 	}
 	
+	// Notify CORS system to add origins from redirect URIs
+	if err := notifyCORSUpdate(ctx, s.corsNotifier, redirectURIs, "add"); err != nil {
+		log.Printf("OAuth2 Service: Failed to notify CORS system for client %s: %v", client.ClientID, err)
+		// Don't fail client creation if CORS notification fails
+	}
+	
 	return client, nil
 }
 
@@ -162,8 +179,21 @@ func (s *OAuth2Service) DeleteClient(ctx context.Context, clientIDOrID, userID s
 		return ErrInvalidClient
 	}
 	
-	// Use the actual client_id for deletion
-	return s.repo.DeleteClient(ctx, client.ClientID, userID)
+	// Store redirect URIs for CORS cleanup before deletion
+	redirectURIs := client.RedirectURIs
+	
+	// Delete the client from repository
+	if err := s.repo.DeleteClient(ctx, client.ClientID, userID); err != nil {
+		return err
+	}
+	
+	// Notify CORS system to remove origins from redirect URIs
+	if err := notifyCORSUpdate(ctx, s.corsNotifier, redirectURIs, "remove"); err != nil {
+		log.Printf("OAuth2 Service: Failed to notify CORS system for deleted client %s: %v", client.ClientID, err)
+		// Don't fail deletion if CORS notification fails
+	}
+	
+	return nil
 }
 
 // ValidateClient validates client credentials

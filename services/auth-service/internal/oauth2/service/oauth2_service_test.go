@@ -44,6 +44,33 @@ func (m *mockOAuth2Repository) GetClientByClientID(ctx context.Context, clientID
 	return nil, ErrClientNotFound
 }
 
+func (m *mockOAuth2Repository) GetClientByID(ctx context.Context, id string) (*models.OAuth2Client, error) {
+	for _, client := range m.clients {
+		if client.ID == id {
+			return client, nil
+		}
+	}
+	return nil, ErrClientNotFound
+}
+
+func (m *mockOAuth2Repository) GetClientsByUserID(ctx context.Context, userID string) ([]*models.OAuth2Client, error) {
+	var clients []*models.OAuth2Client
+	for _, client := range m.clients {
+		if client.UserID == userID {
+			clients = append(clients, client)
+		}
+	}
+	return clients, nil
+}
+
+func (m *mockOAuth2Repository) DeleteClient(ctx context.Context, clientID, userID string) error {
+	if client, exists := m.clients[clientID]; exists && client.UserID == userID {
+		delete(m.clients, clientID)
+		return nil
+	}
+	return ErrClientNotFound
+}
+
 func (m *mockOAuth2Repository) CreateAuthorizationCode(ctx context.Context, code *models.AuthorizationCode) error {
 	m.authCodes[code.CodeHash] = code
 	return nil
