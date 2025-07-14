@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glen-user-service
+  namespace: glen-system
+  labels:
+    app: glen-user-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: glen-user-service
+  template:
+    metadata:
+      labels:
+        app: glen-user-service
+        version: v1
+    spec:
+      containers:
+      - name: user-service
+        image: DOCKER_HUB_USERNAME/glen-user-service:latest
+        ports:
+        - containerPort: 8082
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: USER_SERVICE_PORT
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: glen-secrets
+              key: DB_PASSWORD
+        - name: DB_SSLMODE
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_SSLMODE
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: REDIS_PORT
+        - name: ENV
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: LOG_LEVEL
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8082
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glen-user-service
+  namespace: glen-system
+  labels:
+    app: glen-user-service
+spec:
+  selector:
+    app: glen-user-service
+  ports:
+  - port: 8082
+    targetPort: 8082
+    protocol: TCP
+  type: ClusterIP

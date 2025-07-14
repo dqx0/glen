@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glen-auth-service
+  namespace: glen-system
+  labels:
+    app: glen-auth-service
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: glen-auth-service
+  template:
+    metadata:
+      labels:
+        app: glen-auth-service
+        version: v1
+    spec:
+      containers:
+      - name: auth-service
+        image: DOCKER_HUB_USERNAME/glen-auth-service:latest
+        ports:
+        - containerPort: 8081
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: AUTH_SERVICE_PORT
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: glen-secrets
+              key: DB_PASSWORD
+        - name: DB_SSLMODE
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: DB_SSLMODE
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: REDIS_PORT
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: glen-secrets
+              key: JWT_SECRET
+        - name: OAUTH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: glen-secrets
+              key: OAUTH_CLIENT_ID
+        - name: OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: glen-secrets
+              key: OAUTH_CLIENT_SECRET
+        - name: ENV
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: LOG_LEVEL
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glen-auth-service
+  namespace: glen-system
+  labels:
+    app: glen-auth-service
+spec:
+  selector:
+    app: glen-auth-service
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+  type: ClusterIP

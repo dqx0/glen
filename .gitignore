@@ -61,6 +61,10 @@ secrets/
 *.key
 *.pem
 *.crt
+.env.secrets
+terraform.tfvars
+k8s-secrets.yaml
+secret.yaml
 
 # Test files
 test_output/
@@ -68,5 +72,21 @@ test_output/
 # Development documentation (internal use)
 *.md
 !README.md
+!README-DEPLOYMENT.md
 
 __debug_*
+
+# Terraform
+tfplan
+*.tfstate
+*.tfstate.backup
+infrastructure/terraform/.terraform
+# Terraform lock files
+infrastructure/terraform/.terraform.lock.hcl
+infrastructure/terraform/.terraform.tfstate.lock.info
+# Terraform plan files
+infrastructure/terraform/*.tfplan
+
+# k8s
+infrastructure/k8s/*.yaml.bak
+infrastructure/k8s/configmap.yaml  # 実際のIPアドレスを含むため除外

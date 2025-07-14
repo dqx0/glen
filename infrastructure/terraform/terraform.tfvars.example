@@ -1,0 +1,21 @@
+# GCP Project Configuration
+project_id = "glen-id-platform"
+region     = "asia-northeast1"
+zone       = "asia-northeast1-a"
+
+# Database Configuration
+db_password = "your-secure-database-password"
+
+# JWT Configuration
+jwt_secret = "your-jwt-secret-key"
+
+# OAuth Configuration
+oauth_client_id     = "your-oauth-client-id"
+oauth_client_secret = "your-oauth-client-secret"
+
+# Environment
+environment = "production"
+
+# Domain Configuration
+domain     = "glen.dqx0.com"
+api_domain = "api.glen.dqx0.com"

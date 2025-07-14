@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glen-frontend
+  namespace: glen-system
+  labels:
+    app: glen-frontend
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: glen-frontend
+  template:
+    metadata:
+      labels:
+        app: glen-frontend
+        version: v1
+    spec:
+      containers:
+      - name: frontend
+        image: DOCKER_HUB_USERNAME/glen-frontend:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: VITE_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: VITE_API_URL
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glen-frontend-service
+  namespace: glen-system
+  labels:
+    app: glen-frontend
+spec:
+  selector:
+    app: glen-frontend
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  type: LoadBalancer

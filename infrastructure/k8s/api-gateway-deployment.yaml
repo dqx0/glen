@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glen-api-gateway
+  namespace: glen-system
+  labels:
+    app: glen-api-gateway
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: glen-api-gateway
+  template:
+    metadata:
+      labels:
+        app: glen-api-gateway
+        version: v1
+    spec:
+      containers:
+      - name: api-gateway
+        image: DOCKER_HUB_USERNAME/glen-api-gateway:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: API_GATEWAY_PORT
+        - name: AUTH_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: AUTH_SERVICE_URL
+        - name: USER_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: USER_SERVICE_URL
+        - name: SOCIAL_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: SOCIAL_SERVICE_URL
+        - name: ENV
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: LOG_LEVEL
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glen-api-gateway-service
+  namespace: glen-system
+  labels:
+    app: glen-api-gateway
+spec:
+  selector:
+    app: glen-api-gateway
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: LoadBalancer

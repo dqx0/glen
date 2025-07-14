@@ -344,18 +344,41 @@ debug-stop:
 
 frontend-docker-build:
 	@echo "🐳 Building frontend Docker image..."
-	docker build -t glen/frontend:latest -f frontend/Dockerfile frontend
+	docker build -t glen/frontend:latest -f frontend/Dockerfile frontend \
+		--build-arg VITE_API_URL=https://api.glen.dqx0.com \
+		--build-arg VITE_APP_NAME="Glen ID Platform" \
+		--build-arg VITE_WEBAUTHN_ENABLED=true
 	@echo "✅ Frontend Docker image built"
+
+frontend-docker-build-prod:
+	@echo "🐳 Building frontend Docker image for production..."
+	docker build -t glen/frontend:production -f frontend/Dockerfile frontend \
+		--build-arg VITE_API_URL=https://api.glen.dqx0.com \
+		--build-arg VITE_APP_NAME="Glen ID Platform" \
+		--build-arg VITE_WEBAUTHN_ENABLED=true
+	@echo "✅ Frontend production Docker image built"
 
 # Docker関連 (統合版)
 docker-build:
-	@echo "🐳 Building Docker images..."
-	docker build -t glen/auth-service:latest -f services/auth-service/Dockerfile services/auth-service
-	docker build -t glen/user-service:latest -f services/user-service/Dockerfile services/user-service
-	docker build -t glen/social-service:latest -f services/social-service/Dockerfile services/social-service
-	docker build -t glen/api-gateway:latest -f services/api-gateway/Dockerfile services/api-gateway
-	@$(MAKE) frontend-docker-build
-	@echo "✅ All Docker images built"
+	@echo "🐳 Building Docker images for Docker Hub..."
+	docker build -t $(DOCKER_HUB_USERNAME)/glen-auth-service:latest -f services/auth-service/Dockerfile services/auth-service
+	docker build -t $(DOCKER_HUB_USERNAME)/glen-user-service:latest -f services/user-service/Dockerfile services/user-service
+	docker build -t $(DOCKER_HUB_USERNAME)/glen-social-service:latest -f services/social-service/Dockerfile services/social-service
+	docker build -t $(DOCKER_HUB_USERNAME)/glen-api-gateway:latest -f services/api-gateway/Dockerfile services/api-gateway
+	docker build -t $(DOCKER_HUB_USERNAME)/glen-frontend:latest -f frontend/Dockerfile frontend \
+		--build-arg VITE_API_URL=https://api.glen.dqx0.com \
+		--build-arg VITE_APP_NAME="Glen ID Platform" \
+		--build-arg VITE_WEBAUTHN_ENABLED=true
+	@echo "✅ All Docker images built for Docker Hub"
+
+docker-push:
+	@echo "🚀 Pushing Docker images to Docker Hub..."
+	docker push $(DOCKER_HUB_USERNAME)/glen-auth-service:latest
+	docker push $(DOCKER_HUB_USERNAME)/glen-user-service:latest
+	docker push $(DOCKER_HUB_USERNAME)/glen-social-service:latest
+	docker push $(DOCKER_HUB_USERNAME)/glen-api-gateway:latest
+	docker push $(DOCKER_HUB_USERNAME)/glen-frontend:latest
+	@echo "✅ All Docker images pushed to Docker Hub"
 
 # マイグレーション関連
 migrator-build:
