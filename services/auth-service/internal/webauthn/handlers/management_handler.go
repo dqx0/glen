@@ -61,6 +61,7 @@ func (h *ManagementHandler) RegisterRoutes(r chi.Router) {
 			r.Use(middleware.RequireOwnerOrAdmin("userID"))
 		} else {
 			r.Use(middleware.DevModeMiddleware)
+			r.Use(middleware.RequireOwnerOrAdmin("userID"))
 		}
 		r.Get("/", h.GetUserCredentials)
 		r.Delete("/{credentialID}", h.DeleteCredential)

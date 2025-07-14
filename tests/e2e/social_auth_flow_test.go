@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestSocialAccountLinking(t *testing.T) {
 		require.NotEmpty(t, userID)
 
 		// Step 2: Login to get JWT
-		tokens := loginUser(t, apiGatewayURL, testUser)
+		tokens := loginUser(t, apiGatewayURL, userID, testUser)
 		require.NotEmpty(t, tokens.AccessToken)
 
 		// Step 3: Get linked social accounts (should be empty initially)
@@ -170,11 +171,31 @@ func getLinkedSocialAccounts(t *testing.T, baseURL, token, userID string) []Soci
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
+	// Log response details for debugging
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("Social accounts response status: %d", resp.StatusCode)
+	t.Logf("Social accounts response body: %s", string(body))
+
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Getting linked accounts should succeed")
 
-	var accounts []SocialAccount
-	err = json.NewDecoder(resp.Body).Decode(&accounts)
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
 	require.NoError(t, err)
+
+	// Accounts are nested under "accounts" key
+	accountsData, exists := result["accounts"].([]interface{})
+	require.True(t, exists, "Response should contain accounts array")
+
+	var accounts []SocialAccount
+	for _, account := range accountsData {
+		accountMap := account.(map[string]interface{})
+		accounts = append(accounts, SocialAccount{
+			ID:       accountMap["id"].(string),
+			UserID:   accountMap["user_id"].(string),
+			Provider: accountMap["provider"].(string),
+		})
+	}
 
 	return accounts
 }

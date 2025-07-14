@@ -21,6 +21,7 @@ type AuthServiceInterface interface {
 	RevokeToken(ctx context.Context, tokenID, userID string) error
 	ListUserTokens(ctx context.Context, userID string) ([]*models.Token, error)
 	ValidateAPIKey(ctx context.Context, apiKeyValue string) (*models.Token, error)
+	ValidateJWTToken(ctx context.Context, tokenString string) (*service.Claims, error)
 	CleanupExpiredTokens(ctx context.Context) (int64, error)
 }
 
@@ -55,6 +56,18 @@ type RevokeTokenRequest struct {
 type ErrorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message,omitempty"`
+}
+
+// ValidateTokenRequest はトークン検証リクエスト
+type ValidateTokenRequest struct {
+	Token string `json:"token"`
+}
+
+// ValidateTokenResponse はトークン検証レスポンス
+type ValidateTokenResponse struct {
+	Valid  bool   `json:"valid"`
+	UserID string `json:"user_id,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 // AuthHandler は認証関連のHTTPハンドラーを提供する
@@ -92,14 +105,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Set session cookie for OAuth2 flow
 	// Remove Domain to allow cookie sharing across localhost ports
 	sessionCookie := &http.Cookie{
-		Name:     "glen_session", 
-		Value:    response.AccessToken,
+		Name:  "glen_session",
+		Value: response.AccessToken,
 		// No Domain set - allows sharing across localhost ports
 		Path:     "/",
-		HttpOnly: false, // Set to false for development debugging
-		Secure:   false, // Set to true in production with HTTPS  
+		HttpOnly: false,                // Set to false for development debugging
+		Secure:   false,                // Set to true in production with HTTPS
 		SameSite: http.SameSiteLaxMode, // Use Lax for better browser compatibility
-		MaxAge:   3600, // 1 hour
+		MaxAge:   3600,                 // 1 hour
 	}
 	http.SetCookie(w, sessionCookie)
 
@@ -244,24 +257,63 @@ func (h *AuthHandler) ValidateAPIKey(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, response)
 }
 
+// ValidateToken はJWTトークンを検証する
+// POST /api/v1/auth/validate-token
+func (h *AuthHandler) ValidateToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req ValidateTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Token == "" {
+		h.writeError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	// JWT トークンを検証
+	claims, err := h.authService.ValidateJWTToken(r.Context(), req.Token)
+	if err != nil {
+		// トークンが無効な場合
+		response := ValidateTokenResponse{
+			Valid: false,
+			Error: "invalid token",
+		}
+		h.writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	// トークンが有効な場合
+	response := ValidateTokenResponse{
+		Valid:  true,
+		UserID: claims.UserID,
+	}
+	h.writeJSON(w, http.StatusOK, response)
+}
+
 // handleServiceError はサービス層のエラーを適切なHTTPレスポンスに変換する
 func (h *AuthHandler) handleServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, service.ErrInvalidUserID),
-		 errors.Is(err, service.ErrInvalidUsername),
-		 errors.Is(err, service.ErrEmptyScopes):
+		errors.Is(err, service.ErrInvalidUsername),
+		errors.Is(err, service.ErrEmptyScopes):
 		h.writeError(w, http.StatusBadRequest, err.Error())
-	
+
 	case errors.Is(err, service.ErrInvalidRefreshToken),
-		 errors.Is(err, service.ErrTokenExpired):
+		errors.Is(err, service.ErrTokenExpired):
 		h.writeError(w, http.StatusUnauthorized, err.Error())
-	
+
 	case errors.Is(err, repository.ErrTokenNotFound):
 		h.writeError(w, http.StatusNotFound, err.Error())
-	
+
 	case errors.Is(err, service.ErrUnauthorized):
 		h.writeError(w, http.StatusForbidden, err.Error())
-	
+
 	default:
 		// デバッグ用のエラーログ出力
 		log.Printf("Auth handler error: %v", err)
@@ -274,7 +326,7 @@ func (h *AuthHandler) handleServiceError(w http.ResponseWriter, err error) {
 func (h *AuthHandler) writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	
+
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		// エラーログを記録（実際のアプリケーションではロガーを使用）
 		http.Error(w, "failed to encode JSON", http.StatusInternalServerError)

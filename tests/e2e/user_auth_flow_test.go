@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -32,12 +33,12 @@ func TestUserRegistrationAndAuth(t *testing.T) {
 		require.NotEmpty(t, userID)
 
 		// Step 2: Login and get JWT token
-		tokens := loginUser(t, apiGatewayURL, testUser)
+		tokens := loginUser(t, apiGatewayURL, userID, testUser)
 		require.NotEmpty(t, tokens.AccessToken)
 		require.NotEmpty(t, tokens.RefreshToken)
 
 		// Step 3: Access protected endpoint with JWT
-		userInfo := getProtectedUserInfo(t, apiGatewayURL, tokens.AccessToken, testUser.Username)
+		userInfo := getProtectedUserInfo(t, apiGatewayURL, tokens.AccessToken, userID)
 		assert.Equal(t, testUser.Username, userInfo.Username)
 		assert.Equal(t, testUser.Email, userInfo.Email)
 
@@ -46,7 +47,7 @@ func TestUserRegistrationAndAuth(t *testing.T) {
 		require.NotEmpty(t, apiKey.Token)
 
 		// Step 5: Access API with API Key
-		userInfoWithAPIKey := getProtectedUserInfoWithAPIKey(t, apiGatewayURL, apiKey.Token, testUser.Username)
+		userInfoWithAPIKey := getProtectedUserInfoWithAPIKey(t, apiGatewayURL, apiKey.Token, userID)
 		assert.Equal(t, testUser.Username, userInfoWithAPIKey.Username)
 
 		// Step 6: Refresh JWT token
@@ -101,21 +102,31 @@ func registerUser(t *testing.T, baseURL string, user TestUser) string {
 
 	require.Equal(t, http.StatusCreated, resp.StatusCode, "User registration should succeed")
 
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("Registration response body: %s", string(body))
+
 	var result map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&result)
+	err = json.Unmarshal(body, &result)
 	require.NoError(t, err)
 
-	userID, exists := result["id"].(string)
+	t.Logf("Parsed registration response: %+v", result)
+
+	// User data is nested under "user" key
+	userData, exists := result["user"].(map[string]interface{})
+	require.True(t, exists, "Response should contain user data")
+
+	userID, exists := userData["id"].(string)
 	require.True(t, exists, "Response should contain user ID")
 	
 	return userID
 }
 
-func loginUser(t *testing.T, baseURL string, user TestUser) LoginResponse {
+func loginUser(t *testing.T, baseURL string, userID string, user TestUser) LoginResponse {
 	url := fmt.Sprintf("%s/api/v1/auth/login", baseURL)
 	
 	loginReq := map[string]interface{}{
-		"user_id":      "", // Will be filled by user service
+		"user_id":      userID,
 		"username":     user.Username,
 		"session_name": "e2e-test",
 		"scopes":       []string{"user:read", "user:write"},
@@ -126,17 +137,23 @@ func loginUser(t *testing.T, baseURL string, user TestUser) LoginResponse {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
+	// Log response details for debugging
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("Login response status: %d", resp.StatusCode)
+	t.Logf("Login response body: %s", string(body))
+
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Login should succeed")
 
 	var tokens LoginResponse
-	err = json.NewDecoder(resp.Body).Decode(&tokens)
+	err = json.Unmarshal(body, &tokens)
 	require.NoError(t, err)
 
 	return tokens
 }
 
-func getProtectedUserInfo(t *testing.T, baseURL, token, username string) UserInfo {
-	url := fmt.Sprintf("%s/api/v1/users/%s", baseURL, username)
+func getProtectedUserInfo(t *testing.T, baseURL, token, userID string) UserInfo {
+	url := fmt.Sprintf("%s/api/v1/users/%s", baseURL, userID)
 	
 	req, err := http.NewRequest("GET", url, nil)
 	require.NoError(t, err)
@@ -147,11 +164,27 @@ func getProtectedUserInfo(t *testing.T, baseURL, token, username string) UserInf
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
+	// Log response details for debugging
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("Protected endpoint response status: %d", resp.StatusCode)
+	t.Logf("Protected endpoint response body: %s", string(body))
+
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Protected endpoint access should succeed")
 
-	var userInfo UserInfo
-	err = json.NewDecoder(resp.Body).Decode(&userInfo)
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
 	require.NoError(t, err)
+
+	// User data is nested under "user" key
+	userData, exists := result["user"].(map[string]interface{})
+	require.True(t, exists, "Response should contain user data")
+
+	userInfo := UserInfo{
+		ID:       userData["id"].(string),
+		Username: userData["username"].(string),
+		Email:    userData["email"].(string),
+	}
 
 	return userInfo
 }
@@ -176,17 +209,23 @@ func createAPIKey(t *testing.T, baseURL, token, userID string) APIKeyResponse {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
+	// Log response details for debugging
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("API key creation response status: %d", resp.StatusCode)
+	t.Logf("API key creation response body: %s", string(body))
+
 	require.Equal(t, http.StatusCreated, resp.StatusCode, "API key creation should succeed")
 
 	var apiKey APIKeyResponse
-	err = json.NewDecoder(resp.Body).Decode(&apiKey)
+	err = json.Unmarshal(body, &apiKey)
 	require.NoError(t, err)
 
 	return apiKey
 }
 
-func getProtectedUserInfoWithAPIKey(t *testing.T, baseURL, apiKey, username string) UserInfo {
-	url := fmt.Sprintf("%s/api/v1/users/%s", baseURL, username)
+func getProtectedUserInfoWithAPIKey(t *testing.T, baseURL, apiKey, userID string) UserInfo {
+	url := fmt.Sprintf("%s/api/v1/users/%s", baseURL, userID)
 	
 	req, err := http.NewRequest("GET", url, nil)
 	require.NoError(t, err)
@@ -197,11 +236,27 @@ func getProtectedUserInfoWithAPIKey(t *testing.T, baseURL, apiKey, username stri
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
+	// Log response details for debugging
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("API key access response status: %d", resp.StatusCode)
+	t.Logf("API key access response body: %s", string(body))
+
 	require.Equal(t, http.StatusOK, resp.StatusCode, "API key access should succeed")
 
-	var userInfo UserInfo
-	err = json.NewDecoder(resp.Body).Decode(&userInfo)
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
 	require.NoError(t, err)
+
+	// User data is nested under "user" key
+	userData, exists := result["user"].(map[string]interface{})
+	require.True(t, exists, "Response should contain user data")
+
+	userInfo := UserInfo{
+		ID:       userData["id"].(string),
+		Username: userData["username"].(string),
+		Email:    userData["email"].(string),
+	}
 
 	return userInfo
 }

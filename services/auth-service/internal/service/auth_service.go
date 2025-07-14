@@ -82,11 +82,11 @@ func (s *AuthService) Login(ctx context.Context, userID, username, sessionName s
 	if userID == "" {
 		return nil, ErrInvalidUserID
 	}
-	
+
 	if username == "" {
 		return nil, ErrInvalidUsername
 	}
-	
+
 	if len(scopes) == 0 {
 		return nil, ErrEmptyScopes
 	}
@@ -265,4 +265,9 @@ func (s *AuthService) ValidateAPIKey(ctx context.Context, apiKeyValue string) (*
 // CleanupExpiredTokens は期限切れトークンを削除する
 func (s *AuthService) CleanupExpiredTokens(ctx context.Context) (int64, error) {
 	return s.tokenRepo.DeleteExpiredTokens(ctx)
+}
+
+// ValidateJWTToken はJWTトークンを検証してクレームを返す
+func (a *AuthService) ValidateJWTToken(ctx context.Context, tokenString string) (*Claims, error) {
+	return a.jwtService.ValidateToken(tokenString)
 }

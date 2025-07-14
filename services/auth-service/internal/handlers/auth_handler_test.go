@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/dqx0/glen/auth-service/internal/models"
 	"github.com/dqx0/glen/auth-service/internal/repository"
 	"github.com/dqx0/glen/auth-service/internal/service"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockAuthService はAuthServiceのモック
@@ -65,6 +65,14 @@ func (m *MockAuthService) ValidateAPIKey(ctx context.Context, apiKeyValue string
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.Token), args.Error(1)
+}
+
+func (m *MockAuthService) ValidateJWTToken(ctx context.Context, tokenString string) (*service.Claims, error) {
+	args := m.Called(ctx, tokenString)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*service.Claims), args.Error(1)
 }
 
 func (m *MockAuthService) CleanupExpiredTokens(ctx context.Context) (int64, error) {

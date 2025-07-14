@@ -30,18 +30,18 @@ type OriginStats struct {
 
 // CORSMiddleware はCORS（Cross-Origin Resource Sharing）を処理するミドルウェア
 type CORSMiddleware struct {
-	allowedOrigins     []string
-	allowedMethods     []string
-	allowedHeaders     []string
-	allowedPatterns    []*regexp.Regexp
-	allowCredentials   bool
-	maxAge             string
-	authServiceURL     string
-	developmentMode    bool
-	allowAnyLocalhost  bool
-	dynamicOrigins     sync.Map // thread-safe map for dynamic origins
-	mutex              sync.RWMutex
-	repository         CORSRepository // for persistence
+	allowedOrigins    []string
+	allowedMethods    []string
+	allowedHeaders    []string
+	allowedPatterns   []*regexp.Regexp
+	allowCredentials  bool
+	maxAge            string
+	authServiceURL    string
+	developmentMode   bool
+	allowAnyLocalhost bool
+	dynamicOrigins    sync.Map // thread-safe map for dynamic origins
+	mutex             sync.RWMutex
+	repository        CORSRepository // for persistence
 }
 
 // NewCORSMiddleware は新しいCORSMiddlewareを作成する
@@ -68,7 +68,7 @@ func NewCORSMiddleware(authServiceURL string) *CORSMiddleware {
 		cors.compileOriginPatterns()
 	}
 
-	log.Printf("CORS configured: dev=%v, localhost=%v, origins=%d, credentials=%v", 
+	log.Printf("CORS configured: dev=%v, localhost=%v, origins=%d, credentials=%v",
 		cors.developmentMode, cors.allowAnyLocalhost, len(cors.allowedOrigins), cors.allowCredentials)
 	return cors
 }
@@ -83,7 +83,7 @@ func NewCORSMiddlewareWithRepository(authServiceURL string, repository CORSRepos
 // getDefaultOrigins はデフォルトの許可オリジンを返す
 func getDefaultOrigins() []string {
 	env := os.Getenv("ENVIRONMENT")
-	
+
 	if env == "production" {
 		// 本番環境では信頼できるオリジンのみ
 		return []string{
@@ -91,13 +91,13 @@ func getDefaultOrigins() []string {
 			"https://api.glen.dqx0.com",
 		}
 	}
-	
+
 	// 開発環境では基本的なオリジンのみ
 	return []string{
-		"http://localhost:5173",  // フロントエンド
-		"http://localhost:3000",  // 代替フロントエンド
-		"http://localhost:3001",  // サンプルアプリ
-		"https://glen.dqx0.com",  // 本番フロントエンド
+		"http://localhost:5173", // フロントエンド
+		"http://localhost:3000", // 代替フロントエンド
+		"http://localhost:3001", // サンプルアプリ
+		"https://glen.dqx0.com", // 本番フロントエンド
 	}
 }
 
@@ -134,11 +134,11 @@ func (c *CORSMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 		// 共通のCORSヘッダーを設定
 		w.Header().Set("Access-Control-Allow-Methods", joinStrings(c.allowedMethods, ", "))
 		w.Header().Set("Access-Control-Allow-Headers", joinStrings(c.allowedHeaders, ", "))
-		
+
 		if c.allowCredentials {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
-		
+
 		w.Header().Set("Access-Control-Max-Age", c.maxAge)
 
 		// OPTIONSリクエスト（プリフライト）の処理
@@ -190,10 +190,10 @@ func (c *CORSMiddleware) isOriginAllowed(origin string) bool {
 
 // isLocalhostOrigin はローカルホストのオリジンかチェックする
 func (c *CORSMiddleware) isLocalhostOrigin(origin string) bool {
-	return strings.HasPrefix(origin, "http://localhost:") || 
-		   strings.HasPrefix(origin, "http://127.0.0.1:") ||
-		   strings.HasPrefix(origin, "https://localhost:") || 
-		   strings.HasPrefix(origin, "https://127.0.0.1:")
+	return strings.HasPrefix(origin, "http://localhost:") ||
+		strings.HasPrefix(origin, "http://127.0.0.1:") ||
+		strings.HasPrefix(origin, "https://localhost:") ||
+		strings.HasPrefix(origin, "https://127.0.0.1:")
 }
 
 // isOAuth2ClientOrigin はOAuth2クライアントとして登録されたオリジンかチェックする
@@ -201,7 +201,7 @@ func (c *CORSMiddleware) isOAuth2ClientOrigin(origin string) bool {
 	if c.authServiceURL == "" {
 		return false
 	}
-	
+
 	// OAuth2クライアントAPIを呼び出してオリジンを検証
 	return c.verifyOriginWithAuthService(origin)
 }
@@ -252,7 +252,7 @@ func getEnvStringSlice(key string, defaultValue []string) []string {
 	if value == "" {
 		return defaultValue
 	}
-	
+
 	// カンマ区切りで分割し、空白をトリム
 	var result []string
 	for _, item := range strings.Split(value, ",") {
@@ -260,11 +260,11 @@ func getEnvStringSlice(key string, defaultValue []string) []string {
 			result = append(result, trimmed)
 		}
 	}
-	
+
 	if len(result) == 0 {
 		return defaultValue
 	}
-	
+
 	return result
 }
 
@@ -272,7 +272,7 @@ func getEnvStringSlice(key string, defaultValue []string) []string {
 func (c *CORSMiddleware) AddDynamicOrigins(origins []string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	for _, origin := range origins {
 		if c.isValidOrigin(origin) {
 			c.dynamicOrigins.Store(origin, true)
@@ -287,7 +287,7 @@ func (c *CORSMiddleware) AddDynamicOrigins(origins []string) {
 func (c *CORSMiddleware) RemoveDynamicOrigins(origins []string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	for _, origin := range origins {
 		c.dynamicOrigins.Delete(origin)
 		log.Printf("CORS: Removed dynamic origin: %s", origin)
@@ -298,7 +298,7 @@ func (c *CORSMiddleware) RemoveDynamicOrigins(origins []string) {
 func (c *CORSMiddleware) GetDynamicOrigins() []string {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
-	
+
 	var origins []string
 	c.dynamicOrigins.Range(func(key, value interface{}) bool {
 		if origin, ok := key.(string); ok {
@@ -306,7 +306,7 @@ func (c *CORSMiddleware) GetDynamicOrigins() []string {
 		}
 		return true
 	})
-	
+
 	return origins
 }
 
@@ -315,22 +315,22 @@ func (c *CORSMiddleware) isValidOrigin(origin string) bool {
 	if origin == "" {
 		return false
 	}
-	
+
 	u, err := url.Parse(origin)
 	if err != nil {
 		return false
 	}
-	
+
 	// 本番環境ではHTTPS必須（localhost除く）
 	if !c.developmentMode && u.Scheme != "https" && !strings.Contains(u.Host, "localhost") && !strings.Contains(u.Host, "127.0.0.1") {
 		return false
 	}
-	
+
 	// ホスト名が存在することを確認
 	if u.Host == "" {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -353,7 +353,6 @@ func (c *CORSMiddleware) LoadPersistedOrigins(ctx context.Context) error {
 		c.dynamicOrigins.Store(origin, true)
 	}
 
-	log.Printf("CORS: Loaded %d persisted origins from database", len(origins))
 	return nil
 }
 
@@ -361,13 +360,13 @@ func (c *CORSMiddleware) LoadPersistedOrigins(ctx context.Context) error {
 func (c *CORSMiddleware) AddDynamicOriginsWithPersistence(ctx context.Context, origins []string, clientID string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	for _, origin := range origins {
 		if c.isValidOrigin(origin) {
 			// Add to memory cache
 			c.dynamicOrigins.Store(origin, true)
 			log.Printf("CORS: Added dynamic origin to memory: %s", origin)
-			
+
 			// Persist to database
 			if c.repository != nil {
 				if err := c.repository.AddOrigin(ctx, origin, clientID); err != nil {
@@ -387,12 +386,12 @@ func (c *CORSMiddleware) AddDynamicOriginsWithPersistence(ctx context.Context, o
 func (c *CORSMiddleware) RemoveDynamicOriginsWithPersistence(ctx context.Context, origins []string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	for _, origin := range origins {
 		// Remove from memory cache
 		c.dynamicOrigins.Delete(origin)
 		log.Printf("CORS: Removed dynamic origin from memory: %s", origin)
-		
+
 		// Remove from database
 		if c.repository != nil {
 			if err := c.repository.RemoveOrigin(ctx, origin); err != nil {
@@ -426,7 +425,7 @@ func (c *CORSMiddleware) RemoveOriginsByClientIDWithPersistence(ctx context.Cont
 	// Remove from memory cache
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	
+
 	for _, origin := range origins {
 		c.dynamicOrigins.Delete(origin)
 		log.Printf("CORS: Removed origin %s for deleted client %s", origin, clientID)
@@ -452,7 +451,7 @@ func (c *CORSMiddleware) GetPersistedOriginStats(ctx context.Context) (map[strin
 		if err != nil {
 			return nil, fmt.Errorf("failed to get origin stats: %w", err)
 		}
-		
+
 		return map[string]interface{}{
 			"persistence":        "enabled",
 			"total_origins":      stats.TotalOrigins,

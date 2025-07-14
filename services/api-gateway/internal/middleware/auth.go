@@ -9,17 +9,33 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+// HTTPClient はHTTPリクエストを行うためのインターフェース
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
 
 // AuthMiddleware は認証を処理するミドルウェア
 type AuthMiddleware struct {
 	authServiceURL string
+	httpClient     HTTPClient
 }
 
 // NewAuthMiddleware は新しいAuthMiddlewareを作成する
 func NewAuthMiddleware(authServiceURL string) *AuthMiddleware {
 	return &AuthMiddleware{
 		authServiceURL: authServiceURL,
+		httpClient:     &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+// NewAuthMiddlewareWithClient はカスタムHTTPクライアントを使用してAuthMiddlewareを作成する
+func NewAuthMiddlewareWithClient(authServiceURL string, client HTTPClient) *AuthMiddleware {
+	return &AuthMiddleware{
+		authServiceURL: authServiceURL,
+		httpClient:     client,
 	}
 }
 
@@ -32,7 +48,7 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 			a.writeUnauthorizedResponse(w, "authorization header required")
 			return
 		}
-		
+
 		// Bearer token or API key の判定
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			// JWT トークンの処理
@@ -48,7 +64,7 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 				a.writeUnauthorizedResponse(w, "invalid API key")
 				return
 			}
-			
+
 			// API KeyからユーザーIDを取得してヘッダーに設定
 			if userID := a.extractUserIDFromAPIKey(apiKey); userID != "" {
 				r.Header.Set("X-User-ID", userID)
@@ -57,11 +73,11 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 			a.writeUnauthorizedResponse(w, "unsupported authorization type")
 			return
 		}
-		
+
 		// 認証成功 - コンテキストに認証情報を追加
 		ctx := context.WithValue(r.Context(), "authenticated", true)
 		r = r.WithContext(ctx)
-		
+
 		// ユーザーIDをヘッダーに設定（プロキシ用）
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			token := authHeader[7:]
@@ -69,7 +85,7 @@ func (a *AuthMiddleware) Handle(handler http.HandlerFunc) http.HandlerFunc {
 				r.Header.Set("X-User-ID", userID)
 			}
 		}
-		
+
 		// 次のハンドラーを実行
 		handler(w, r)
 	}
@@ -80,14 +96,12 @@ func (a *AuthMiddleware) validateJWTToken(token string) bool {
 	if len(token) < 10 {
 		return false
 	}
-	
+
 	// トークンが適切な形式かチェック（JWT は通常 xxx.yyy.zzz の形式）
 	parts := strings.Split(token, ".")
 	if len(parts) == 3 {
-		// JWTトークンの場合の検証（従来の処理）
-		// 実際のアプリケーションでは、auth-service に検証リクエストを送信
-		log.Printf("Validating JWT token")
-		return true
+		// JWTトークンの場合、auth-serviceに検証リクエストを送信
+		return a.validateJWTWithAuthService(token)
 	} else {
 		// OAuth2 アクセストークンの可能性があるので introspection で検証
 		log.Printf("Validating OAuth2 access token via introspection")
@@ -126,7 +140,7 @@ func extractUserIDFromJWT(token string) string {
 
 	// ペイロード部分をデコード
 	payload := parts[1]
-	
+
 	// Base64のパディングを修正
 	switch len(payload) % 4 {
 	case 2:
@@ -157,45 +171,44 @@ func extractUserIDFromJWT(token string) string {
 func (a *AuthMiddleware) validateOAuth2Token(token string) bool {
 	// OAuth2 introspection エンドポイントにリクエストを送信
 	introspectURL := a.authServiceURL + "/api/v1/oauth2/introspect"
-	
+
 	// Form data for introspection request
 	formData := url.Values{}
 	formData.Set("token", token)
-	
+
 	req, err := http.NewRequest("POST", introspectURL, bytes.NewBufferString(formData.Encode()))
 	if err != nil {
 		log.Printf("Failed to create introspection request: %v", err)
 		return false
 	}
-	
+
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	
-	client := &http.Client{}
-	resp, err := client.Do(req)
+
+	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		log.Printf("Failed to call introspection endpoint: %v", err)
 		return false
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Introspection endpoint returned status: %d", resp.StatusCode)
 		return false
 	}
-	
+
 	var introspectResp map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&introspectResp); err != nil {
 		log.Printf("Failed to decode introspection response: %v", err)
 		return false
 	}
-	
+
 	// Check if token is active
 	active, ok := introspectResp["active"].(bool)
 	if !ok || !active {
 		log.Printf("OAuth2 token is not active")
 		return false
 	}
-	
+
 	log.Printf("OAuth2 token validation successful")
 	return true
 }
@@ -204,127 +217,148 @@ func (a *AuthMiddleware) validateOAuth2Token(token string) bool {
 func (a *AuthMiddleware) extractUserIDFromOAuth2Token(token string) string {
 	// OAuth2 introspection エンドポイントにリクエストを送信
 	introspectURL := a.authServiceURL + "/api/v1/oauth2/introspect"
-	
+
 	// Form data for introspection request
 	formData := url.Values{}
 	formData.Set("token", token)
-	
+
 	req, err := http.NewRequest("POST", introspectURL, bytes.NewBufferString(formData.Encode()))
 	if err != nil {
 		log.Printf("Failed to create introspection request for user ID: %v", err)
 		return ""
 	}
-	
+
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	
-	client := &http.Client{}
-	resp, err := client.Do(req)
+
+	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		log.Printf("Failed to call introspection endpoint for user ID: %v", err)
 		return ""
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Introspection endpoint returned status for user ID: %d", resp.StatusCode)
 		return ""
 	}
-	
+
 	var introspectResp map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&introspectResp); err != nil {
 		log.Printf("Failed to decode introspection response for user ID: %v", err)
 		return ""
 	}
-	
+
 	// Check if token is active and extract username (which contains user ID)
 	active, ok := introspectResp["active"].(bool)
 	if !ok || !active {
 		log.Printf("OAuth2 token is not active when extracting user ID")
 		return ""
 	}
-	
+
 	// Extract user ID from username field
 	username, ok := introspectResp["username"].(string)
 	if !ok {
 		log.Printf("No username field in OAuth2 introspection response")
 		return ""
 	}
-	
+
 	log.Printf("Extracted user ID from OAuth2 token: %s", username)
 	return username
 }
 
 // validateAPIKey はAPIキーを検証する
 func (a *AuthMiddleware) validateAPIKey(apiKey string) bool {
-	// 簡易的な実装：実際には auth-service に検証リクエストを送信
 	if len(apiKey) < 32 {
 		return false
 	}
-	
-	// 実際のアプリケーションでは、auth-service に検証リクエストを送信
-	// validateURL := fmt.Sprintf("%s/api/v1/auth/validate-api-key", a.authServiceURL)
-	// ... HTTP リクエストの実装
-	
-	// 開発段階では true を返す
-	return true
+
+	// Auth ServiceのAPIキー検証エンドポイントにリクエストを送信
+	validateURL := a.authServiceURL + "/api/v1/auth/validate-api-key"
+
+	// リクエストボディを構築
+	requestData := map[string]string{
+		"api_key": apiKey,
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		log.Printf("Failed to marshal API key validation request: %v", err)
+		return false
+	}
+
+	req, err := http.NewRequest("POST", validateURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Failed to create API key validation request: %v", err)
+		return false
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Failed to call API key validation endpoint: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK
 }
 
 // extractUserIDFromAPIKey はAPIキーからユーザーIDを抽出する
 func (a *AuthMiddleware) extractUserIDFromAPIKey(apiKey string) string {
 	// Auth Serviceの validate-api-key エンドポイントにリクエストを送信
 	validateURL := a.authServiceURL + "/api/v1/auth/validate-api-key"
-	
+
 	// リクエストボディを構築
 	requestData := map[string]string{
 		"api_key": apiKey,
 	}
-	
+
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
 		log.Printf("Failed to marshal API key validation request: %v", err)
 		return ""
 	}
-	
+
 	req, err := http.NewRequest("POST", validateURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("Failed to create API key validation request: %v", err)
 		return ""
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
-	
-	client := &http.Client{}
-	resp, err := client.Do(req)
+
+	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		log.Printf("Failed to call API key validation endpoint: %v", err)
 		return ""
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("API key validation endpoint returned status: %d", resp.StatusCode)
 		return ""
 	}
-	
+
 	var validateResp map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&validateResp); err != nil {
 		log.Printf("Failed to decode API key validation response: %v", err)
 		return ""
 	}
-	
+
 	// Check if API key is valid and extract user ID
 	valid, ok := validateResp["valid"].(bool)
 	if !ok || !valid {
 		log.Printf("API key is not valid")
 		return ""
 	}
-	
+
 	userID, ok := validateResp["user_id"].(string)
 	if !ok {
 		log.Printf("No user_id field in API key validation response")
 		return ""
 	}
-	
+
 	log.Printf("Extracted user ID from API key: %s", userID)
 	return userID
 }
@@ -333,7 +367,7 @@ func (a *AuthMiddleware) extractUserIDFromAPIKey(apiKey string) string {
 func (a *AuthMiddleware) writeUnauthorizedResponse(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	
+
 	response := `{"success":false,"error":"` + message + `"}`
 	w.Write([]byte(response))
 }
@@ -346,23 +380,23 @@ func (a *AuthMiddleware) RequireAPIKey(handler http.HandlerFunc) http.HandlerFun
 			a.writeUnauthorizedResponse(w, "API key required")
 			return
 		}
-		
+
 		if !strings.HasPrefix(authHeader, "ApiKey ") {
 			a.writeUnauthorizedResponse(w, "API key format: 'ApiKey <your-key>'")
 			return
 		}
-		
+
 		apiKey := authHeader[7:]
 		if !a.validateAPIKey(apiKey) {
 			a.writeUnauthorizedResponse(w, "invalid API key")
 			return
 		}
-		
+
 		// 認証成功
 		ctx := context.WithValue(r.Context(), "authenticated", true)
 		ctx = context.WithValue(ctx, "auth_type", "api_key")
 		r = r.WithContext(ctx)
-		
+
 		handler(w, r)
 	}
 }
@@ -375,23 +409,76 @@ func (a *AuthMiddleware) RequireJWT(handler http.HandlerFunc) http.HandlerFunc {
 			a.writeUnauthorizedResponse(w, "JWT token required")
 			return
 		}
-		
+
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			a.writeUnauthorizedResponse(w, "JWT format: 'Bearer <your-token>'")
 			return
 		}
-		
+
 		token := authHeader[7:]
 		if !a.validateJWTToken(token) {
 			a.writeUnauthorizedResponse(w, "invalid JWT token")
 			return
 		}
-		
+
 		// 認証成功
 		ctx := context.WithValue(r.Context(), "authenticated", true)
 		ctx = context.WithValue(ctx, "auth_type", "jwt")
 		r = r.WithContext(ctx)
-		
+
 		handler(w, r)
 	}
+}
+
+// validateJWTWithAuthService はAuth ServiceでJWTトークンを検証する
+func (a *AuthMiddleware) validateJWTWithAuthService(token string) bool {
+	// Auth ServiceのJWT検証エンドポイントにリクエストを送信
+	validateURL := a.authServiceURL + "/api/v1/auth/validate-token"
+
+	// リクエストボディを構築
+	requestData := map[string]string{
+		"token": token,
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		log.Printf("Failed to marshal JWT validation request: %v", err)
+		return false
+	}
+
+	req, err := http.NewRequest("POST", validateURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Failed to create JWT validation request: %v", err)
+		return false
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		log.Printf("Failed to call JWT validation endpoint: %v", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("JWT validation endpoint returned status: %d", resp.StatusCode)
+		return false
+	}
+
+	var validateResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&validateResp); err != nil {
+		log.Printf("Failed to decode JWT validation response: %v", err)
+		return false
+	}
+
+	// Check if JWT is valid
+	valid, ok := validateResp["valid"].(bool)
+	if !ok || !valid {
+		log.Printf("JWT token is not valid")
+		return false
+	}
+
+	log.Printf("JWT token validation successful")
+	return true
 }

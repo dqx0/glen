@@ -37,7 +37,25 @@ func NewJWTConfig(jwtService *authService.JWTService) *JWTConfig {
 
 // ValidateToken validates a JWT token using auth-service JWT service
 func (c *JWTConfig) ValidateToken(tokenString string) (*authService.Claims, error) {
-	return c.jwtService.ValidateToken(tokenString)
+	if c.jwtService != nil {
+		return c.jwtService.ValidateToken(tokenString)
+	}
+	
+	// Fallback to test implementation
+	claims, err := ValidateToken(c, tokenString)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert AuthClaims to authService.Claims
+	scopes := []string{}
+	if claims.IsAdmin {
+		scopes = append(scopes, "admin")
+	}
+	return &authService.Claims{
+		UserID: claims.UserID,
+		Scopes: scopes,
+	}, nil
 }
 
 // JWTMiddleware provides JWT authentication middleware using auth-service
@@ -167,10 +185,31 @@ func DevModeMiddleware(next http.Handler) http.Handler {
 // DevModeAdminMiddleware provides a development-only bypass for admin authentication
 func DevModeAdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// In dev mode, set a test admin user (UUID v4 format)
-		testUserID := "87654321-4321-4321-9876-ba9876543210"
-		ctx := context.WithValue(r.Context(), UserIDKey, testUserID)
-		ctx = context.WithValue(ctx, IsAdminKey, true)
+		// In dev mode, get user ID from X-User-ID header (set by API Gateway auth middleware)
+		userID := r.Header.Get("X-User-ID")
+		
+		// If no user ID is present, this means the user is not authenticated
+		if userID == "" {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		
+		// In dev mode, only specific admin user IDs are treated as admin
+		// Check if this is an admin user (based on admin user ID pattern or specific IDs)
+		isAdmin := false
+		adminTestUserID := "87654321-4321-4321-9876-ba9876543210" // Admin test user ID
+		if userID == adminTestUserID {
+			isAdmin = true
+		}
+		
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx = context.WithValue(ctx, IsAdminKey, isAdmin)
+		
+		// If admin privileges are required but user is not admin, deny access
+		if !isAdmin {
+			http.Error(w, "Admin access required", http.StatusForbidden)
+			return
+		}
 		
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

@@ -16,7 +16,7 @@ func TestCORSRepository_AddOrigin(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewCORSRepository(db)
+	repo := NewCORSRepository(db.DB)
 	ctx := context.Background()
 
 	tests := []struct {
@@ -130,7 +130,7 @@ func TestCORSRepository_RemoveOrigin(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewCORSRepository(db)
+	repo := NewCORSRepository(db.DB)
 	ctx := context.Background()
 
 	// Setup test data
@@ -227,7 +227,7 @@ func TestCORSRepository_GetAllOrigins(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewCORSRepository(db)
+	repo := NewCORSRepository(db.DB)
 	ctx := context.Background()
 
 	t.Run("Empty database", func(t *testing.T) {
@@ -271,7 +271,7 @@ func TestCORSRepository_RemoveOriginsByClientID(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewCORSRepository(db)
+	repo := NewCORSRepository(db.DB)
 	ctx := context.Background()
 
 	// Setup test data
@@ -363,7 +363,7 @@ func TestCORSRepository_GetOriginsByClientID(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewCORSRepository(db)
+	repo := NewCORSRepository(db.DB)
 	ctx := context.Background()
 
 	// Setup test data
@@ -452,7 +452,7 @@ func TestCORSRepository_ConcurrentOperations(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	repo := NewCORSRepository(db)
+	repo := NewCORSRepository(db.DB)
 	ctx := context.Background()
 
 	// Test concurrent adds

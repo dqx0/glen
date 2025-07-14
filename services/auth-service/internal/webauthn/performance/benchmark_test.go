@@ -353,6 +353,18 @@ func (m *mockSessionStore) ExtendSessionExpiry(ctx context.Context, sessionID st
 	return nil
 }
 
+func (m *mockSessionStore) StoreWebAuthnSession(ctx context.Context, sessionID string, sessionData []byte) error {
+	return nil
+}
+
+func (m *mockSessionStore) GetWebAuthnSession(ctx context.Context, sessionID string) ([]byte, error) {
+	return nil, repository.ErrSessionNotFound
+}
+
+func (m *mockSessionStore) DeleteWebAuthnSession(ctx context.Context, sessionID string) error {
+	return nil
+}
+
 type mockRepository struct {
 	credentials map[string]*models.WebAuthnCredential
 }
@@ -430,4 +442,11 @@ func (m *mockRepository) GetCredentialStatistics(ctx context.Context) (*reposito
 	return &repository.CredentialStatistics{
 		TotalCredentials: len(m.credentials),
 	}, nil
+}
+
+func (m *mockRepository) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
+	if cred, exists := m.credentials[id]; exists {
+		return cred, nil
+	}
+	return nil, repository.ErrCredentialNotFound
 }

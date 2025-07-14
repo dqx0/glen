@@ -17,7 +17,18 @@ import (
 
 	"github.com/dqx0/glen/auth-service/internal/webauthn/models"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/service"
+	"github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
 )
+
+// Test helper to create a valid JWT token
+func createTestJWTToken(userID string, isAdmin bool) string {
+	config := middleware.DefaultJWTConfig()
+	token, err := middleware.GenerateToken(config, userID, isAdmin)
+	if err != nil {
+		return ""
+	}
+	return token
+}
 
 // Mock WebAuthn service for testing
 type mockWebAuthnService struct {
@@ -229,6 +240,15 @@ func TestRegistrationHandler_StartRegistration(t *testing.T) {
 			
 			handler := NewRegistrationHandler(mockService)
 			
+			// Create router with middleware for proper testing
+			router := chi.NewRouter()
+			
+			// Add JWT middleware for authentication (always needed)
+			config := middleware.DefaultJWTConfig()
+			router.Use(middleware.JWTMiddleware(config))
+			
+			router.Post("/webauthn/register/start", handler.StartRegistration)
+			
 			// Create request
 			var body []byte
 			var err error
@@ -240,12 +260,22 @@ func TestRegistrationHandler_StartRegistration(t *testing.T) {
 			req := httptest.NewRequest("POST", "/webauthn/register/start", bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
 			
+			// Add JWT token for authentication (except for auth header tests)
+			if tt.name != "Missing_Authorization_Header" {
+				testUserID := uuid.New().String() // Use valid UUID v4 format
+				token := createTestJWTToken(testUserID, false)
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			
 			rr := httptest.NewRecorder()
 			
 			// Execute
-			handler.StartRegistration(rr, req)
+			router.ServeHTTP(rr, req)
 			
 			// Assert
+			if rr.Code != tt.expectedStatus {
+				t.Logf("Response body: %s", rr.Body.String())
+			}
 			assert.Equal(t, tt.expectedStatus, rr.Code)
 			
 			if tt.expectError {

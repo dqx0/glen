@@ -32,7 +32,7 @@ func TestUserRepository_Create(t *testing.T) {
 		assert.Equal(t, user.ID, retrievedUser.ID)
 		assert.Equal(t, user.Username, retrievedUser.Username)
 		assert.Equal(t, user.Email, retrievedUser.Email)
-		assert.Equal(t, user.IsActive, retrievedUser.IsActive)
+		assert.Equal(t, user.IsActive(), retrievedUser.IsActive())
 	})
 	
 	t.Run("create user with duplicate username fails", func(t *testing.T) {

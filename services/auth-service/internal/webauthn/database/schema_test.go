@@ -202,17 +202,17 @@ func TestWebAuthnSessionsTableSchema(t *testing.T) {
 
 // TestMigrationSystem tests the migration system
 func TestMigrationSystem(t *testing.T) {
-	// Create in-memory SQLite database for testing
-	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(t, err, "Failed to create test database")
-	defer db.Close()
-
 	ctx := context.Background()
 
 	t.Run("Initialize_Migration_System", func(t *testing.T) {
+		// Create in-memory SQLite database for testing
+		db, err := sql.Open("sqlite3", ":memory:")
+		require.NoError(t, err, "Failed to create test database")
+		defer db.Close()
+		
 		migrator := NewMigrator(db)
 		
-		err := migrator.Initialize(ctx)
+		err = migrator.Initialize(ctx)
 		assert.NoError(t, err, "Migration system initialization should succeed")
 
 		// Verify migrations table exists
@@ -223,9 +223,14 @@ func TestMigrationSystem(t *testing.T) {
 	})
 
 	t.Run("Apply_WebAuthn_Migrations", func(t *testing.T) {
+		// Create in-memory SQLite database for testing
+		db, err := sql.Open("sqlite3", ":memory:")
+		require.NoError(t, err, "Failed to create test database")
+		defer db.Close()
+		
 		migrator := NewMigrator(db)
 		
-		err := migrator.Initialize(ctx)
+		err = migrator.Initialize(ctx)
 		require.NoError(t, err)
 
 		// Get all WebAuthn migrations
@@ -234,7 +239,7 @@ func TestMigrationSystem(t *testing.T) {
 
 		// Apply migrations
 		for _, migration := range migrations {
-			err := migrator.ApplyMigration(ctx, migration)
+			err = migrator.ApplyMigration(ctx, migration)
 			assert.NoError(t, err, "Migration should apply successfully: %s", migration.Name)
 		}
 
@@ -248,15 +253,20 @@ func TestMigrationSystem(t *testing.T) {
 	})
 
 	t.Run("Check_Migration_Status", func(t *testing.T) {
+		// Create in-memory SQLite database for testing
+		db, err := sql.Open("sqlite3", ":memory:")
+		require.NoError(t, err, "Failed to create test database")
+		defer db.Close()
+		
 		migrator := NewMigrator(db)
 		
-		err := migrator.Initialize(ctx)
+		err = migrator.Initialize(ctx)
 		require.NoError(t, err)
 
 		// Apply migrations
 		migrations := GetWebAuthnMigrations()
 		for _, migration := range migrations {
-			err := migrator.ApplyMigration(ctx, migration)
+			err = migrator.ApplyMigration(ctx, migration)
 			require.NoError(t, err)
 		}
 
@@ -274,9 +284,14 @@ func TestMigrationSystem(t *testing.T) {
 	})
 
 	t.Run("Prevent_Duplicate_Migration_Application", func(t *testing.T) {
+		// Create in-memory SQLite database for testing
+		db, err := sql.Open("sqlite3", ":memory:")
+		require.NoError(t, err, "Failed to create test database")
+		defer db.Close()
+		
 		migrator := NewMigrator(db)
 		
-		err := migrator.Initialize(ctx)
+		err = migrator.Initialize(ctx)
 		require.NoError(t, err)
 
 		// Apply migrations first time

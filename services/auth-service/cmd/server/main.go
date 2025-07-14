@@ -19,7 +19,7 @@ import (
 	"github.com/dqx0/glen/auth-service/internal/webauthn"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/config"
 	webauthnMiddleware "github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
-	
+
 	// OAuth2 imports
 	oauth2Database "github.com/dqx0/glen/auth-service/internal/oauth2/database"
 	oauth2Handlers "github.com/dqx0/glen/auth-service/internal/oauth2/handlers"
@@ -96,11 +96,11 @@ func main() {
 
 	// OAuth2 dependencies
 	oauth2Repo := oauth2Repository.NewOAuth2Repository(db)
-	
+
 	// CORS通知機能の設定
 	gatewayURL := getEnvOrDefault("API_GATEWAY_URL", "http://localhost:8080")
 	corsNotifier := oauth2Service.NewHTTPCORSNotifier(gatewayURL)
-	
+
 	oauth2Svc := oauth2Service.NewOAuth2ServiceWithCORS(oauth2Repo, corsNotifier)
 	oauth2Handler := oauth2Handlers.NewOAuth2Handler(oauth2Svc)
 
@@ -125,6 +125,7 @@ func main() {
 			r.Post("/revoke", authHandler.RevokeToken)
 			r.Get("/tokens", authHandler.ListTokens)
 			r.Post("/validate-api-key", authHandler.ValidateAPIKey)
+			r.Post("/validate-token", authHandler.ValidateToken)
 		})
 
 		// WebAuthnエンドポイント
@@ -137,7 +138,7 @@ func main() {
 			r.Post("/token", oauth2Handler.Token)
 			r.Post("/revoke", oauth2Handler.Revoke)
 			r.Post("/introspect", oauth2Handler.Introspect)
-			
+
 			// Client management
 			r.Post("/clients", oauth2Handler.CreateClient)
 			r.Get("/clients", oauth2Handler.GetClients)

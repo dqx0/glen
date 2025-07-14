@@ -1,6 +1,8 @@
 package models
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -65,19 +67,19 @@ func (f *AuthenticatorFlags) Validate() error {
 
 // WebAuthnCredential represents a WebAuthn credential stored in the database
 type WebAuthnCredential struct {
-	ID              string                    `json:"id" db:"id" validate:"required"`
-	UserID          string                    `json:"user_id" db:"user_id" validate:"required,uuid4"`
-	CredentialID    []byte                    `json:"credential_id" db:"credential_id" validate:"required"`
-	PublicKey       []byte                    `json:"public_key" db:"public_key" validate:"required"`
-	AttestationType string                    `json:"attestation_type" db:"attestation_type"`
+	ID              string                   `json:"id" db:"id" validate:"required"`
+	UserID          string                   `json:"user_id" db:"user_id" validate:"required,uuid4"`
+	CredentialID    []byte                   `json:"credential_id" db:"credential_id" validate:"required"`
+	PublicKey       []byte                   `json:"public_key" db:"public_key" validate:"required"`
+	AttestationType string                   `json:"attestation_type" db:"attestation_type"`
 	Transport       []AuthenticatorTransport `json:"transport" db:"transport"`
 	Flags           AuthenticatorFlags       `json:"flags" db:"flags"`
-	SignCount       uint32                    `json:"sign_count" db:"sign_count"`
-	CloneWarning    bool                      `json:"clone_warning" db:"clone_warning"`
-	Name            string                    `json:"name" db:"name"`
-	CreatedAt       time.Time                 `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time                 `json:"updated_at" db:"updated_at"`
-	LastUsedAt      *time.Time                `json:"last_used_at,omitempty" db:"last_used_at"`
+	SignCount       uint32                   `json:"sign_count" db:"sign_count"`
+	CloneWarning    bool                     `json:"clone_warning" db:"clone_warning"`
+	Name            string                   `json:"name" db:"name"`
+	CreatedAt       time.Time                `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time                `json:"updated_at" db:"updated_at"`
+	LastUsedAt      *time.Time               `json:"last_used_at,omitempty" db:"last_used_at"`
 }
 
 // Validate validates the WebAuthnCredential
@@ -120,14 +122,14 @@ func (c *WebAuthnCredential) Validate() error {
 
 // SessionData represents temporary session data for WebAuthn ceremonies
 type SessionData struct {
-	ID                   string                       `json:"id" db:"id" validate:"required"`
-	Challenge            []byte                       `json:"challenge" db:"challenge" validate:"required"`
-	UserID               string                       `json:"user_id" db:"user_id" validate:"required,uuid4"`
-	AllowedCredentialIDs [][]byte                     `json:"allowed_credential_ids" db:"allowed_credential_ids"`
-	ExpiresAt            time.Time                    `json:"expires_at" db:"expires_at"`
-	CreatedAt            time.Time                    `json:"created_at" db:"created_at"`
+	ID                   string                      `json:"id" db:"id" validate:"required"`
+	Challenge            []byte                      `json:"challenge" db:"challenge" validate:"required"`
+	UserID               string                      `json:"user_id" db:"user_id" validate:"required,uuid4"`
+	AllowedCredentialIDs [][]byte                    `json:"allowed_credential_ids" db:"allowed_credential_ids"`
+	ExpiresAt            time.Time                   `json:"expires_at" db:"expires_at"`
+	CreatedAt            time.Time                   `json:"created_at" db:"created_at"`
 	UserVerification     UserVerificationRequirement `json:"user_verification" db:"user_verification"`
-	
+
 	// Deprecated: Use ExpiresAt instead
 	Expires time.Time `json:"expires,omitempty" db:"-"`
 }
@@ -137,7 +139,7 @@ func (s *SessionData) Validate() error {
 	if s.ID == "" {
 		return errors.New("ID is required")
 	}
-	
+
 	if len(s.Challenge) == 0 {
 		return errors.New("Challenge is required")
 	}
@@ -182,7 +184,7 @@ func (s *SessionData) IsExpired() bool {
 	return expiryTime.Before(time.Now())
 }
 
-// WebAuthnErrorType represents the type of WebAuthn error  
+// WebAuthnErrorType represents the type of WebAuthn error
 type WebAuthnErrorType string
 
 const (
@@ -197,10 +199,10 @@ const (
 	ErrInternalError        WebAuthnErrorType = "INTERNAL_ERROR"
 	ErrRateLimited          WebAuthnErrorType = "RATE_LIMITED"
 	ErrTimeout              WebAuthnErrorType = "TIMEOUT"
-	
+
 	// Legacy error types for backwards compatibility
 	ErrorTypeValidation     = "validation"
-	ErrorTypeAuthentication = "authentication" 
+	ErrorTypeAuthentication = "authentication"
 	ErrorTypeNotFound       = "not_found"
 	ErrorTypeInternal       = "internal"
 	ErrorTypeTimeout        = "timeout"
@@ -210,10 +212,10 @@ const (
 // WebAuthnError represents a custom error for WebAuthn operations
 type WebAuthnError struct {
 	Type    WebAuthnErrorType `json:"type"`
-	Code    string           `json:"code"`
-	Message string           `json:"message"`
-	Details string           `json:"details,omitempty"`
-	Cause   error            `json:"cause,omitempty"`
+	Code    string            `json:"code"`
+	Message string            `json:"message"`
+	Details string            `json:"details,omitempty"`
+	Cause   error             `json:"cause,omitempty"`
 }
 
 // Error implements the error interface
@@ -311,8 +313,8 @@ func NewWebAuthnErrorLegacy(errorType string, message string, cause error) *WebA
 
 // CredentialDescriptor represents a credential descriptor for WebAuthn
 type CredentialDescriptor struct {
-	Type       string                    `json:"type"`
-	ID         []byte                    `json:"id"`
+	Type       string                   `json:"type"`
+	ID         []byte                   `json:"id"`
 	Transports []AuthenticatorTransport `json:"transports,omitempty"`
 }
 
@@ -358,7 +360,7 @@ func (r ResidentKeyRequirement) IsValid() bool {
 type AuthenticatorAttachment string
 
 const (
-	AuthenticatorAttachmentPlatform     AuthenticatorAttachment = "platform"
+	AuthenticatorAttachmentPlatform      AuthenticatorAttachment = "platform"
 	AuthenticatorAttachmentCrossPlatform AuthenticatorAttachment = "cross-platform"
 )
 
@@ -376,9 +378,9 @@ func (a AuthenticatorAttachment) IsValid() bool {
 type COSEAlgorithmIdentifier int
 
 const (
-	COSEAlgES256 COSEAlgorithmIdentifier = -7  // ECDSA w/ SHA-256
-	COSEAlgES384 COSEAlgorithmIdentifier = -35 // ECDSA w/ SHA-384
-	COSEAlgES512 COSEAlgorithmIdentifier = -36 // ECDSA w/ SHA-512
+	COSEAlgES256 COSEAlgorithmIdentifier = -7   // ECDSA w/ SHA-256
+	COSEAlgES384 COSEAlgorithmIdentifier = -35  // ECDSA w/ SHA-384
+	COSEAlgES512 COSEAlgorithmIdentifier = -36  // ECDSA w/ SHA-512
 	COSEAlgRS256 COSEAlgorithmIdentifier = -257 // RSASSA-PKCS1-v1_5 w/ SHA-256
 	COSEAlgRS384 COSEAlgorithmIdentifier = -258 // RSASSA-PKCS1-v1_5 w/ SHA-384
 	COSEAlgRS512 COSEAlgorithmIdentifier = -259 // RSASSA-PKCS1-v1_5 w/ SHA-512
@@ -428,8 +430,8 @@ func (c COSEAlgorithmIdentifier) String() string {
 
 // PublicKeyCredentialParameters represents the public key credential parameters
 type PublicKeyCredentialParameters struct {
-	Type string                      `json:"type"`
-	Alg  COSEAlgorithmIdentifier     `json:"alg"`
+	Type string                  `json:"type"`
+	Alg  COSEAlgorithmIdentifier `json:"alg"`
 }
 
 // ValidateCredentialParameters validates a slice of credential parameters
@@ -470,12 +472,12 @@ func TransportsToString(transports []AuthenticatorTransport) string {
 	if len(transports) == 0 {
 		return ""
 	}
-	
+
 	stringTransports := make([]string, len(transports))
 	for i, transport := range transports {
 		stringTransports[i] = string(transport)
 	}
-	
+
 	return strings.Join(stringTransports, ",")
 }
 
@@ -484,17 +486,17 @@ func StringToTransports(s string) []AuthenticatorTransport {
 	if s == "" {
 		return []AuthenticatorTransport{}
 	}
-	
+
 	parts := strings.Split(s, ",")
 	transports := make([]AuthenticatorTransport, 0, len(parts))
-	
+
 	for _, part := range parts {
 		transport := AuthenticatorTransport(strings.TrimSpace(part))
 		if transport.IsValid() {
 			transports = append(transports, transport)
 		}
 	}
-	
+
 	return transports
 }
 
@@ -504,36 +506,36 @@ func StringToTransports(s string) []AuthenticatorTransport {
 type RegistrationStartRequest struct {
 	UserID   string `json:"user_id" validate:"required,uuid4"`
 	Username string `json:"username" validate:"required,min=1,max=64"`
-	
+
 	// Optional registration options
 	Options *RegistrationOptions `json:"options,omitempty"`
 }
 
 // RegistrationOptions represents optional parameters for registration
 type RegistrationOptions struct {
-	Timeout                        *int                             `json:"timeout,omitempty"`
-	ResidentKeyRequirement         ResidentKeyRequirement          `json:"resident_key,omitempty"`
-	UserVerification               UserVerificationRequirement     `json:"user_verification,omitempty"`
+	Timeout                         *int                            `json:"timeout,omitempty"`
+	ResidentKeyRequirement          ResidentKeyRequirement          `json:"resident_key,omitempty"`
+	UserVerification                UserVerificationRequirement     `json:"user_verification,omitempty"`
 	AttestationConveyancePreference AttestationConveyancePreference `json:"attestation,omitempty"`
-	AuthenticatorAttachment        AuthenticatorAttachment         `json:"authenticator_attachment,omitempty"`
+	AuthenticatorAttachment         AuthenticatorAttachment         `json:"authenticator_attachment,omitempty"`
 }
 
 // RegistrationStartResponse represents the response to a registration start request
 type RegistrationStartResponse struct {
-	SessionID string                               `json:"session_id"`
+	SessionID string                              `json:"session_id"`
 	Options   *PublicKeyCredentialCreationOptions `json:"options"`
 }
 
 // PublicKeyCredentialCreationOptions represents the WebAuthn creation options
 type PublicKeyCredentialCreationOptions struct {
-	Challenge              []byte                            `json:"challenge"`
-	RP                     *RelyingPartyEntity               `json:"rp"`
-	User                   *UserEntity                       `json:"user"`
-	PubKeyCredParams       []PublicKeyCredentialParameters  `json:"pubKeyCredParams"`
-	Timeout                *int                              `json:"timeout,omitempty"`
-	ExcludeCredentials     []CredentialDescriptor           `json:"excludeCredentials,omitempty"`
-	AuthenticatorSelection *AuthenticatorSelectionCriteria  `json:"authenticatorSelection,omitempty"`
-	Attestation            AttestationConveyancePreference  `json:"attestation,omitempty"`
+	Challenge              Base64URLBytes                  `json:"challenge"`
+	RP                     *RelyingPartyEntity             `json:"rp"`
+	User                   *UserEntity                     `json:"user"`
+	PubKeyCredParams       []PublicKeyCredentialParameters `json:"pubKeyCredParams"`
+	Timeout                *int                            `json:"timeout,omitempty"`
+	ExcludeCredentials     []CredentialDescriptor          `json:"excludeCredentials,omitempty"`
+	AuthenticatorSelection *AuthenticatorSelectionCriteria `json:"authenticatorSelection,omitempty"`
+	Attestation            AttestationConveyancePreference `json:"attestation,omitempty"`
 }
 
 // RelyingPartyEntity represents the relying party
@@ -544,30 +546,30 @@ type RelyingPartyEntity struct {
 
 // UserEntity represents a WebAuthn user entity
 type UserEntity struct {
-	ID          []byte `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
+	ID          Base64URLBytes `json:"id"`
+	Name        string         `json:"name"`
+	DisplayName string         `json:"displayName"`
 }
 
 // AuthenticatorSelectionCriteria represents authenticator selection criteria
 type AuthenticatorSelectionCriteria struct {
-	AuthenticatorAttachment AuthenticatorAttachment      `json:"authenticatorAttachment,omitempty"`
-	ResidentKey             ResidentKeyRequirement       `json:"residentKey,omitempty"`
-	RequireResidentKey      bool                         `json:"requireResidentKey,omitempty"`
+	AuthenticatorAttachment AuthenticatorAttachment     `json:"authenticatorAttachment,omitempty"`
+	ResidentKey             ResidentKeyRequirement      `json:"residentKey,omitempty"`
+	RequireResidentKey      bool                        `json:"requireResidentKey,omitempty"`
 	UserVerification        UserVerificationRequirement `json:"userVerification,omitempty"`
 }
 
 // RegistrationFinishRequest represents a request to finish WebAuthn registration
 type RegistrationFinishRequest struct {
-	SessionID string                              `json:"session_id" validate:"required"`
-	Response  *AuthenticatorAttestationResponse  `json:"response" validate:"required"`
+	SessionID string                            `json:"session_id" validate:"required"`
+	Response  *AuthenticatorAttestationResponse `json:"response" validate:"required"`
 }
 
 // AuthenticatorAttestationResponse represents the authenticator attestation response
 type AuthenticatorAttestationResponse struct {
-	ID       string                              `json:"id"`
-	RawID    []byte                              `json:"rawId"`
-	Type     string                              `json:"type"`
+	ID       string                                `json:"id"`
+	RawID    []byte                                `json:"rawId"`
+	Type     string                                `json:"type"`
 	Response *AuthenticatorAttestationResponseData `json:"response"`
 }
 
@@ -581,7 +583,7 @@ type AuthenticatorAttestationResponseData struct {
 // RegistrationResult represents the result of a registration ceremony
 type RegistrationResult struct {
 	Success      bool                `json:"success"`
-	CredentialID string             `json:"credential_id,omitempty"`
+	CredentialID string              `json:"credential_id,omitempty"`
 	Credential   *WebAuthnCredential `json:"credential,omitempty"`
 	Error        string              `json:"error,omitempty"`
 }
@@ -590,45 +592,45 @@ type RegistrationResult struct {
 type AuthenticationStartRequest struct {
 	UserID         string `json:"user_id,omitempty"`
 	UserIdentifier string `json:"user_identifier,omitempty"`
-	
+
 	// Optional authentication options
-	Options              *AuthenticationOptions `json:"options,omitempty"`
-	AllowedCredentials   [][]byte              `json:"allowed_credentials,omitempty"`
+	Options            *AuthenticationOptions `json:"options,omitempty"`
+	AllowedCredentials [][]byte               `json:"allowed_credentials,omitempty"`
 }
 
 // AuthenticationOptions represents optional parameters for authentication
 type AuthenticationOptions struct {
-	Timeout             *int                         `json:"timeout,omitempty"`
-	UserVerification    UserVerificationRequirement `json:"user_verification,omitempty"`
-	AllowedTransports   []AuthenticatorTransport    `json:"allowed_transports,omitempty"`
+	Timeout           *int                        `json:"timeout,omitempty"`
+	UserVerification  UserVerificationRequirement `json:"user_verification,omitempty"`
+	AllowedTransports []AuthenticatorTransport    `json:"allowed_transports,omitempty"`
 }
 
 // AuthenticationStartResponse represents the response to an authentication start request
 type AuthenticationStartResponse struct {
-	SessionID string                               `json:"session_id"`
-	Options   *PublicKeyCredentialRequestOptions  `json:"options"`
+	SessionID string                             `json:"session_id"`
+	Options   *PublicKeyCredentialRequestOptions `json:"options"`
 }
 
 // PublicKeyCredentialRequestOptions represents the WebAuthn request options
 type PublicKeyCredentialRequestOptions struct {
-	Challenge        []byte                      `json:"challenge"`
+	Challenge        Base64URLBytes              `json:"challenge"`
 	Timeout          *int                        `json:"timeout,omitempty"`
 	RPID             string                      `json:"rpId"`
-	AllowCredentials []CredentialDescriptor     `json:"allowCredentials,omitempty"`
+	AllowCredentials []CredentialDescriptor      `json:"allowCredentials,omitempty"`
 	UserVerification UserVerificationRequirement `json:"userVerification,omitempty"`
 }
 
 // AuthenticationFinishRequest represents a request to finish WebAuthn authentication
 type AuthenticationFinishRequest struct {
-	SessionID string                         `json:"session_id" validate:"required"`
+	SessionID string                          `json:"session_id" validate:"required"`
 	Response  *AuthenticatorAssertionResponse `json:"response" validate:"required"`
 }
 
 // AuthenticatorAssertionResponse represents the authenticator assertion response
 type AuthenticatorAssertionResponse struct {
-	ID       string                            `json:"id"`
-	RawID    []byte                            `json:"rawId"`
-	Type     string                            `json:"type"`
+	ID       string                              `json:"id"`
+	RawID    []byte                              `json:"rawId"`
+	Type     string                              `json:"type"`
 	Response *AuthenticatorAssertionResponseData `json:"response"`
 }
 
@@ -646,4 +648,48 @@ type AuthenticationResult struct {
 	UserID       string `json:"user_id,omitempty"`
 	CredentialID string `json:"credential_id,omitempty"`
 	Error        string `json:"error,omitempty"`
+}
+
+// Base64URLBytes represents a byte slice that marshals to/from base64url encoding
+type Base64URLBytes []byte
+
+// MarshalJSON implements json.Marshaler interface for Base64URLBytes
+func (b Base64URLBytes) MarshalJSON() ([]byte, error) {
+	if b == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(base64.RawURLEncoding.EncodeToString(b))
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface for Base64URLBytes
+func (b *Base64URLBytes) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	if s == "" {
+		*b = nil
+		return nil
+	}
+
+	// Try multiple base64 encodings to be flexible
+	decodedBytes, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		// Try with padding
+		decodedBytes, err = base64.URLEncoding.DecodeString(s)
+		if err != nil {
+			// Try standard base64
+			decodedBytes, err = base64.StdEncoding.DecodeString(s)
+			if err != nil {
+				return fmt.Errorf("failed to decode base64 string: %w", err)
+			}
+		}
+	}
+	*b = decodedBytes
+	return nil
+}
+
+// String returns the base64url encoded string representation
+func (b Base64URLBytes) String() string {
+	return base64.RawURLEncoding.EncodeToString(b)
 }

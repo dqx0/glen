@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -173,7 +174,7 @@ func TestManagementHandler_DeleteCredential(t *testing.T) {
 		{
 			name:         "Valid_Delete_Credential",
 			userID:       uuid.New().String(),
-			credentialID: "test-credential-id",
+			credentialID: base64.URLEncoding.EncodeToString([]byte("test-credential-id")),
 			setupMock: func(m *mockWebAuthnService) {
 				m.On("DeleteCredential", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("[]uint8")).
 					Return(nil)
@@ -200,7 +201,7 @@ func TestManagementHandler_DeleteCredential(t *testing.T) {
 		{
 			name:         "Service_Error",
 			userID:       uuid.New().String(),
-			credentialID: "test-credential-id",
+			credentialID: base64.URLEncoding.EncodeToString([]byte("test-credential-id")),
 			setupMock: func(m *mockWebAuthnService) {
 				m.On("DeleteCredential", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("[]uint8")).
 					Return(service.NewServiceError(service.ErrServiceNotFound, "Credential not found", ""))
@@ -234,6 +235,9 @@ func TestManagementHandler_DeleteCredential(t *testing.T) {
 			handler.DeleteCredential(rr, req)
 			
 			// Assert
+			if rr.Code != tt.expectedStatus {
+				t.Logf("Response body: %s", rr.Body.String())
+			}
 			assert.Equal(t, tt.expectedStatus, rr.Code)
 			
 			if tt.expectError {
@@ -255,7 +259,8 @@ func TestManagementHandler_DeleteCredential(t *testing.T) {
 
 func TestManagementHandler_UpdateCredential(t *testing.T) {
 	userID := uuid.New().String()
-	credentialID := "test-credential-id"
+	rawCredentialID := "test-credential-id"
+	credentialID := base64.URLEncoding.EncodeToString([]byte(rawCredentialID))
 	
 	tests := []struct {
 		name           string
@@ -271,8 +276,9 @@ func TestManagementHandler_UpdateCredential(t *testing.T) {
 			},
 			setupMock: func(m *mockWebAuthnService) {
 				credentials := createTestWebAuthnCredentials()
-				// Set the credential ID to match what we're looking for
-				credentials[0].CredentialID = []byte(credentialID)
+				// Set the database record ID to match what we're looking for in the URL
+				credentials[0].ID = credentialID
+				credentials[0].CredentialID = []byte(rawCredentialID)
 				
 				m.On("GetUserCredentials", mock.Anything, userID).
 					Return(credentials, nil)
@@ -336,6 +342,9 @@ func TestManagementHandler_UpdateCredential(t *testing.T) {
 			handler.UpdateCredential(rr, req)
 			
 			// Assert
+			if rr.Code != tt.expectedStatus {
+				t.Logf("Response body: %s", rr.Body.String())
+			}
 			assert.Equal(t, tt.expectedStatus, rr.Code)
 			
 			if tt.expectError {

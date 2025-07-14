@@ -84,6 +84,23 @@ func TestWebAuthnRepository_CreateCredential(t *testing.T) {
 				QueryTimeout: 30 * time.Second,
 			})
 
+			// Special setup for duplicate credential test
+			if tt.name == "Duplicate_Credential_ID" {
+				// First, create the credential that will be duplicated
+				initialCred := &models.WebAuthnCredential{
+					ID:           uuid.New().String(),
+					UserID:       uuid.New().String(),
+					CredentialID: []byte("duplicate-credential-id"),
+					PublicKey:    []byte("initial-public-key"),
+					AttestationType: "none",
+					SignCount:    0,
+					CreatedAt:    time.Now(),
+					UpdatedAt:    time.Now(),
+				}
+				err := repo.CreateCredential(context.Background(), initialCred)
+				require.NoError(t, err)
+			}
+
 			// Execute test
 			err := repo.CreateCredential(context.Background(), tt.credential)
 
@@ -476,6 +493,14 @@ func (m *mockWebAuthnRepository) GetCredentialStatistics(ctx context.Context) (*
 	return &CredentialStatistics{}, nil
 }
 
+func (m *mockWebAuthnRepository) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
+	return &models.WebAuthnCredential{
+		ID: id,
+		CredentialID: []byte("test-credential"),
+		SignCount: 42,
+	}, nil
+}
+
 type mockSessionStore struct{}
 
 func (m *mockSessionStore) StoreSession(ctx context.Context, session *models.SessionData) error {
@@ -513,5 +538,17 @@ func (m *mockSessionStore) ValidateSessionExists(ctx context.Context, sessionID 
 }
 
 func (m *mockSessionStore) ExtendSessionExpiry(ctx context.Context, sessionID string, newExpiry time.Time) error {
+	return nil
+}
+
+func (m *mockSessionStore) StoreWebAuthnSession(ctx context.Context, sessionID string, sessionData []byte) error {
+	return nil
+}
+
+func (m *mockSessionStore) GetWebAuthnSession(ctx context.Context, sessionID string) ([]byte, error) {
+	return nil, NewRepositoryError(ErrRepositoryNotFound, "session not found", nil)
+}
+
+func (m *mockSessionStore) DeleteWebAuthnSession(ctx context.Context, sessionID string) error {
 	return nil
 }

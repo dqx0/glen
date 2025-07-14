@@ -113,12 +113,21 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 		return nil, NewRepositoryError(ErrRepositoryConstraint, "Invalid user ID format", err)
 	}
 
+	// Use database-agnostic placeholder
 	query := `
+		SELECT id, user_id, credential_id, public_key, attestation_type,
+			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
+		FROM webauthn_credentials 
+		WHERE user_id = ?
+		ORDER BY created_at DESC`
+	if r.db.DriverName() == "postgres" {
+		query = `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
 			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE user_id = $1
 		ORDER BY created_at DESC`
+	}
 
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
@@ -479,7 +488,11 @@ func (r *postgresWebAuthnRepository) GetCredentialCount(ctx context.Context, use
 		return 0, NewRepositoryError(ErrRepositoryConstraint, "Invalid user ID format", err)
 	}
 
-	query := `SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = $1`
+	// Use database-agnostic placeholder
+	query := `SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = ?`
+	if r.db.DriverName() == "postgres" {
+		query = `SELECT COUNT(*) FROM webauthn_credentials WHERE user_id = $1`
+	}
 
 	var count int
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(&count)

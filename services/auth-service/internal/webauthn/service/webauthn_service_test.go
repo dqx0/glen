@@ -149,6 +149,13 @@ func (m *mockCredRepository) GetCredentialStatistics(ctx context.Context) (*repo
 	}, nil
 }
 
+func (m *mockCredRepository) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
+	if cred, exists := m.credentials[id]; exists {
+		return cred, nil
+	}
+	return nil, repository.ErrCredentialNotFound
+}
+
 type mockSessionStore struct {
 	mock.Mock
 	sessions         map[string]*models.SessionData
