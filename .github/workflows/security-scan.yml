@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   dependency-scan:
     runs-on: ubuntu-latest
@@ -60,7 +65,7 @@ jobs:
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-secret-results.sarif') != ''
         with:
           sarif_file: 'trivy-secret-results.sarif'
 
@@ -89,7 +94,7 @@ jobs:
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-${{ matrix.service }}-results.sarif') != ''
         with:
           sarif_file: 'trivy-${{ matrix.service }}-results.sarif'
 
@@ -127,7 +132,7 @@ jobs:
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-frontend-results.sarif') != ''
         with:
           sarif_file: 'trivy-frontend-results.sarif'
 
@@ -155,25 +160,25 @@ jobs:
 
       - name: Upload gosec scan results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('gosec-auth-results.sarif') != ''
         with:
           sarif_file: 'gosec-auth-results.sarif'
           
       - name: Upload gosec user service results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('gosec-user-results.sarif') != ''
         with:
           sarif_file: 'gosec-user-results.sarif'
           
       - name: Upload gosec social service results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('gosec-social-results.sarif') != ''
         with:
           sarif_file: 'gosec-social-results.sarif'
           
       - name: Upload gosec gateway results
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('gosec-gateway-results.sarif') != ''
         with:
           sarif_file: 'gosec-gateway-results.sarif'
 
