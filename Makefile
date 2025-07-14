@@ -306,6 +306,7 @@ frontend-install:
 
 frontend-build:
 	@echo "🎨 Building frontend..."
+	cd frontend && npm ci
 	cd frontend && npm run build
 	@echo "✅ Frontend built"
 
