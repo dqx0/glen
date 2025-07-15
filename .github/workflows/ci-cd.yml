@@ -228,11 +228,12 @@ jobs:
             --dry-run=client -o yaml | kubectl apply -f -
           
           # Create migration job
+          JOB_NAME="glen-db-migration-$(date +%s)"
           cat <<EOF | kubectl apply -f -
           apiVersion: batch/v1
           kind: Job
           metadata:
-            name: glen-db-migration-$(date +%s)
+            name: $JOB_NAME
             namespace: glen-system
           spec:
             template:
@@ -275,9 +276,26 @@ jobs:
           
           # Wait for migration job to complete
           echo "Waiting for database migration to complete..."
-          kubectl wait --for=condition=complete job -l batch.kubernetes.io/job-name --timeout=300s -n glen-system || true
           
-          # Check migration status
+          # Wait for job completion or failure with timeout
+          for i in {1..30}; do
+            JOB_STATUS=$(kubectl get job $JOB_NAME -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "")
+            JOB_FAILED=$(kubectl get job $JOB_NAME -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
+            
+            if [[ "$JOB_STATUS" == "True" ]]; then
+              echo "Migration job completed successfully"
+              break
+            elif [[ "$JOB_FAILED" == "True" ]]; then
+              echo "Migration job failed"
+              kubectl logs -n glen-system job/$JOB_NAME --tail=50 || true
+              break
+            fi
+            
+            echo "Waiting for migration job... ($i/30)"
+            sleep 10
+          done
+          
+          # Check final migration status
           kubectl get jobs -n glen-system
           
           # Clean up old migration jobs (keep only latest 3)
