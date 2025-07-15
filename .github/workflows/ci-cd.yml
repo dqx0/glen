@@ -252,6 +252,8 @@ jobs:
             name: $JOB_NAME
             namespace: glen-system
           spec:
+            activeDeadlineSeconds: 600  # 10 minute timeout
+            backoffLimit: 3
             template:
               spec:
                 restartPolicy: OnFailure
@@ -263,20 +265,35 @@ jobs:
                   - -c
                   - |
                     echo "Starting database migration..."
+                    echo "Job: $JOB_NAME"
+                    echo "Time: \$(date)"
                     echo "DB_HOST: \$DB_HOST"
                     echo "Checking database connection..."
                     
-                    # Test database connection
-                    until migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version; do
-                      echo "Database connection failed, retrying in 5 seconds..."
+                    # Install postgresql client for debugging
+                    apk add --no-cache postgresql-client || echo "Failed to install psql, continuing..."
+                    
+                    # Test database connection with timeout
+                    echo "Testing database connection..."
+                    RETRIES=0
+                    MAX_RETRIES=12
+                    until migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version 2>/dev/null; do
+                      RETRIES=\$((RETRIES + 1))
+                      if [ \$RETRIES -ge \$MAX_RETRIES ]; then
+                        echo "Database connection failed after \$MAX_RETRIES attempts"
+                        exit 1
+                      fi
+                      echo "Database connection failed, retrying in 5 seconds... (\$RETRIES/\$MAX_RETRIES)"
                       sleep 5
                     done
+                    echo "✓ Database connection successful"
                     
                     # Check current migration version
                     echo "Current migration version:"
                     migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version || echo "No migrations found"
                     
                     # Check if database is dirty and force clean if needed
+                    echo "Checking if database is dirty..."
                     if migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version 2>&1 | grep -q "dirty"; then
                       echo "Database is in dirty state, forcing clean..."
                       migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" force 20250706000001
@@ -286,13 +303,21 @@ jobs:
                     echo "Available migration files:"
                     ls -la /migrations/
                     
-                    # Run migrations
+                    # Run migrations with verbose output
                     echo "Running migrations..."
-                    migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" up
+                    migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" up -verbose
                     
                     # Check final status
                     echo "Final migration status:"
                     migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version
+                    
+                    # Verify tables were created
+                    if command -v psql >/dev/null 2>&1; then
+                      echo "Verifying tables were created:"
+                      PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U glen_user -d glen_prod -c "\\dt" || echo "Could not verify tables"
+                    fi
+                    
+                    echo "Migration completed successfully at: \$(date)"
                   env:
                   - name: DB_HOST
                     valueFrom:
@@ -317,7 +342,8 @@ jobs:
           echo "Waiting for database migration to complete..."
           
           # Wait for job completion or failure with timeout
-          for i in {1..60}; do
+          TIMEOUT=60
+          for i in $(seq 1 $TIMEOUT); do
             JOB_STATUS=$(kubectl get job $JOB_NAME -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "")
             JOB_FAILED=$(kubectl get job $JOB_NAME -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
             
@@ -328,17 +354,44 @@ jobs:
             elif [[ "$JOB_FAILED" == "True" ]]; then
               echo "Migration job failed"
               kubectl logs -n glen-system job/$JOB_NAME --tail=100
+              kubectl describe job $JOB_NAME -n glen-system
               exit 1
             fi
             
-            echo "Waiting for migration job... ($i/60)"
+            # Show current status every 10 iterations
+            if [[ $((i % 10)) -eq 0 ]]; then
+              echo "Migration job status after ${i}0 seconds:"
+              kubectl get job $JOB_NAME -n glen-system -o wide 2>/dev/null || echo "Job not found"
+              kubectl get pods -n glen-system -l job-name=$JOB_NAME -o wide 2>/dev/null || echo "Pods not found"
+              
+              # Show recent pod logs
+              POD_NAME=$(kubectl get pods -n glen-system -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+              if [[ -n "$POD_NAME" ]]; then
+                echo "Current pod logs:"
+                kubectl logs -n glen-system $POD_NAME --tail=20 2>/dev/null || echo "No logs available"
+              fi
+            fi
+            
+            echo "Waiting for migration job... ($i/$TIMEOUT)"
             sleep 10
           done
           
           # Check if we timed out
           if [[ "$JOB_STATUS" != "True" && "$JOB_FAILED" != "True" ]]; then
-            echo "Migration job timed out"
+            echo "Migration job timed out after $((TIMEOUT * 10)) seconds"
+            echo "Final job status:"
+            kubectl get job $JOB_NAME -n glen-system -o wide
+            kubectl describe job $JOB_NAME -n glen-system
+            
+            echo "Pod status:"
+            kubectl get pods -n glen-system -l job-name=$JOB_NAME -o wide
+            
+            echo "Pod logs:"
             kubectl logs -n glen-system job/$JOB_NAME --tail=100
+            
+            # Force cleanup of stuck job
+            echo "Cleaning up stuck migration job..."
+            kubectl delete job $JOB_NAME -n glen-system --force --grace-period=0
             exit 1
           fi
           
