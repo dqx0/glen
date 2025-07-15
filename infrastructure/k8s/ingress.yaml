@@ -8,6 +8,7 @@ metadata:
     kubernetes.io/ingress.global-static-ip-name: "glen-ip"
     networking.gke.io/managed-certificates: "glen-ssl-cert"
     kubernetes.io/ingress.allow-http: "false"
+    cloud.google.com/health-checks: '{"glen-api-gateway-service":{"/":8080}}'
 spec:
   rules:
   - host: glen.dqx0.com

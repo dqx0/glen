@@ -82,6 +82,8 @@ metadata:
   namespace: glen-system
   labels:
     app: glen-api-gateway
+  annotations:
+    cloud.google.com/backend-config: '{"default": "glen-api-gateway-config"}'
 spec:
   selector:
     app: glen-api-gateway
@@ -90,3 +92,15 @@ spec:
     targetPort: 8080
     protocol: TCP
   type: LoadBalancer
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: glen-api-gateway-config
+  namespace: glen-system
+spec:
+  healthCheck:
+    checkIntervalSec: 10
+    port: 8080
+    type: HTTP
+    requestPath: /health
