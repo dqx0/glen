@@ -210,11 +210,11 @@ jobs:
           USE_GKE_GCLOUD_AUTH_PLUGIN: True
         run: |
           # Update image tags in deployment files for Docker Hub
-          sed -i "s|DOCKER_HUB_USERNAME/glen-auth-service:latest|$DOCKER_HUB_USERNAME/glen-auth-service:$IMAGE_TAG|g" infrastructure/k8s/auth-service-deployment.yaml
-          sed -i "s|DOCKER_HUB_USERNAME/glen-user-service:latest|$DOCKER_HUB_USERNAME/glen-user-service:$IMAGE_TAG|g" infrastructure/k8s/user-service-deployment.yaml
-          sed -i "s|DOCKER_HUB_USERNAME/glen-social-service:latest|$DOCKER_HUB_USERNAME/glen-social-service:$IMAGE_TAG|g" infrastructure/k8s/social-service-deployment.yaml
-          sed -i "s|DOCKER_HUB_USERNAME/glen-api-gateway:v1.0.1|$DOCKER_HUB_USERNAME/glen-api-gateway:$IMAGE_TAG|g" infrastructure/k8s/api-gateway-deployment.yaml
-          sed -i "s|DOCKER_HUB_USERNAME/glen-frontend:latest|$DOCKER_HUB_USERNAME/glen-frontend:$IMAGE_TAG|g" infrastructure/k8s/frontend-deployment.yaml
+          sed -i "s|dqx0/glen-auth-service:latest|$DOCKER_HUB_USERNAME/glen-auth-service:$IMAGE_TAG|g" infrastructure/k8s/auth-service-deployment.yaml
+          sed -i "s|dqx0/glen-user-service:latest|$DOCKER_HUB_USERNAME/glen-user-service:$IMAGE_TAG|g" infrastructure/k8s/user-service-deployment.yaml
+          sed -i "s|dqx0/glen-social-service:latest|$DOCKER_HUB_USERNAME/glen-social-service:$IMAGE_TAG|g" infrastructure/k8s/social-service-deployment.yaml
+          sed -i "s|dqx0/glen-api-gateway:v1.0.1|$DOCKER_HUB_USERNAME/glen-api-gateway:$IMAGE_TAG|g" infrastructure/k8s/api-gateway-deployment.yaml
+          sed -i "s|dqx0/glen-frontend:latest|$DOCKER_HUB_USERNAME/glen-frontend:$IMAGE_TAG|g" infrastructure/k8s/frontend-deployment.yaml
 
           # Generate ConfigMap with actual IPs from secrets
           cp infrastructure/k8s/configmap.template.yaml infrastructure/k8s/configmap.yaml
@@ -223,6 +223,14 @@ jobs:
 
           # Apply Kubernetes manifests
           kubectl apply -f infrastructure/k8s/
+          
+          # Force rolling update to ensure new images are pulled
+          echo "Forcing rolling update for all services with new image tag: $IMAGE_TAG"
+          kubectl set image deployment/glen-auth-service auth-service=$DOCKER_HUB_USERNAME/glen-auth-service:$IMAGE_TAG -n glen-system
+          kubectl set image deployment/glen-user-service user-service=$DOCKER_HUB_USERNAME/glen-user-service:$IMAGE_TAG -n glen-system
+          kubectl set image deployment/glen-social-service social-service=$DOCKER_HUB_USERNAME/glen-social-service:$IMAGE_TAG -n glen-system
+          kubectl set image deployment/glen-api-gateway api-gateway=$DOCKER_HUB_USERNAME/glen-api-gateway:$IMAGE_TAG -n glen-system
+          kubectl set image deployment/glen-frontend frontend=$DOCKER_HUB_USERNAME/glen-frontend:$IMAGE_TAG -n glen-system
           
           # Clean up dynamically generated configmap
           rm -f infrastructure/k8s/configmap.yaml
