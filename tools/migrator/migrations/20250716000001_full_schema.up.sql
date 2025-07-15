@@ -202,6 +202,10 @@ CREATE TABLE public.webauthn_credentials (
     transport text[] NOT NULL,
     flags jsonb NOT NULL,
     authenticator jsonb NOT NULL,
+    sign_count integer DEFAULT 0 NOT NULL,
+    clone_warning boolean DEFAULT false NOT NULL,
+    name text,
+    last_used_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now()
 );
