@@ -9,7 +9,7 @@ on:
 env:
   DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
   DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
-  GCP_PROJECT_ID: glen-id-platform
+  GCP_PROJECT_ID: glen-465915
   GCP_REGION: asia-northeast1
   GKE_CLUSTER: glen-cluster
   GKE_ZONE: asia-northeast1-a
@@ -91,13 +91,6 @@ jobs:
 
       - name: Generate test coverage
         run: make test-coverage
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: false  # Disabled until CODECOV_TOKEN is configured
-        with:
-          files: ./services/auth-service/coverage.out,./services/user-service/coverage.out,./services/api-gateway/coverage.out
-          fail_ci_if_error: false
 
   build:
     needs: test
@@ -224,21 +217,4 @@ jobs:
           API_GATEWAY_URL=$(kubectl get service glen-api-gateway-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
           if [ ! -z "$API_GATEWAY_URL" ]; then
             curl -f http://$API_GATEWAY_URL/health || exit 1
-          fi
-
-  notify:
-    needs: [deploy]
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-      - name: Notify deployment status
-        run: |
-          if [ "${{ needs.deploy.result }}" == "success" ]; then
-            echo "✅ Glen ID Platform deployment successful"
-            echo "🌐 Frontend: https://glen.dqx0.com"
-            echo "🔗 API: https://api.glen.dqx0.com"
-          else
-            echo "❌ Glen ID Platform deployment failed"
-            exit 1
           fi
