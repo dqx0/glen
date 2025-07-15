@@ -203,6 +203,9 @@ jobs:
 
           # Apply Kubernetes manifests
           kubectl apply -f infrastructure/k8s/
+          
+          # Clean up dynamically generated configmap
+          rm -f infrastructure/k8s/configmap.yaml
 
       - name: Run database migrations
         run: |
