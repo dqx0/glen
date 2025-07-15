@@ -262,14 +262,37 @@ jobs:
                   - /bin/sh
                   - -c
                   - |
+                    echo "Starting database migration..."
+                    echo "DB_HOST: \$DB_HOST"
+                    echo "Checking database connection..."
+                    
+                    # Test database connection
+                    until migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version; do
+                      echo "Database connection failed, retrying in 5 seconds..."
+                      sleep 5
+                    done
+                    
+                    # Check current migration version
+                    echo "Current migration version:"
+                    migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version || echo "No migrations found"
+                    
                     # Check if database is dirty and force clean if needed
                     if migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version 2>&1 | grep -q "dirty"; then
                       echo "Database is in dirty state, forcing clean..."
                       migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" force 20250706000001
                     fi
                     
+                    # List available migrations
+                    echo "Available migration files:"
+                    ls -la /migrations/
+                    
                     # Run migrations
+                    echo "Running migrations..."
                     migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" up
+                    
+                    # Check final status
+                    echo "Final migration status:"
+                    migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version
                   env:
                   - name: DB_HOST
                     valueFrom:
@@ -294,28 +317,36 @@ jobs:
           echo "Waiting for database migration to complete..."
           
           # Wait for job completion or failure with timeout
-          for i in {1..30}; do
+          for i in {1..60}; do
             JOB_STATUS=$(kubectl get job $JOB_NAME -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "")
             JOB_FAILED=$(kubectl get job $JOB_NAME -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "")
             
             if [[ "$JOB_STATUS" == "True" ]]; then
               echo "Migration job completed successfully"
+              kubectl logs -n glen-system job/$JOB_NAME --tail=50
               break
             elif [[ "$JOB_FAILED" == "True" ]]; then
               echo "Migration job failed"
-              kubectl logs -n glen-system job/$JOB_NAME --tail=50 || true
-              break
+              kubectl logs -n glen-system job/$JOB_NAME --tail=100
+              exit 1
             fi
             
-            echo "Waiting for migration job... ($i/30)"
+            echo "Waiting for migration job... ($i/60)"
             sleep 10
           done
+          
+          # Check if we timed out
+          if [[ "$JOB_STATUS" != "True" && "$JOB_FAILED" != "True" ]]; then
+            echo "Migration job timed out"
+            kubectl logs -n glen-system job/$JOB_NAME --tail=100
+            exit 1
+          fi
           
           # Check final migration status
           kubectl get jobs -n glen-system
           
-          # Clean up old migration jobs (keep only latest 3)
-          kubectl get jobs -n glen-system --sort-by=.metadata.creationTimestamp -o name | head -n -3 | xargs -r kubectl delete -n glen-system
+          # Clean up old migration jobs (keep only latest 5)
+          kubectl get jobs -n glen-system --sort-by=.metadata.creationTimestamp -o name | head -n -5 | xargs -r kubectl delete -n glen-system
 
       - name: Wait for deployment to complete
         run: |
