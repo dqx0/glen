@@ -204,6 +204,102 @@ jobs:
           # Apply Kubernetes manifests
           kubectl apply -f infrastructure/k8s/
 
+      - name: Run database migrations
+        run: |
+          # Create migration job
+          cat <<EOF | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: glen-db-migration-$(date +%s)
+            namespace: glen-system
+          spec:
+            template:
+              spec:
+                restartPolicy: OnFailure
+                containers:
+                - name: migrator
+                  image: migrate/migrate:v4.16.2
+                  command:
+                  - migrate
+                  - -path
+                  - /migrations
+                  - -database
+                  - postgres://glen_user:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5432/glen_prod?sslmode=require
+                  - up
+                  volumeMounts:
+                  - name: migrations
+                    mountPath: /migrations
+                volumes:
+                - name: migrations
+                  configMap:
+                    name: migration-files
+          ---
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: migration-files
+            namespace: glen-system
+          data:
+            20250706000001_initial_schema.up.sql: |
+              -- Enable UUID extension
+              CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+              
+              -- Users table
+              CREATE TABLE IF NOT EXISTS users (
+                  id TEXT PRIMARY KEY,
+                  username VARCHAR(50) UNIQUE NOT NULL,
+                  email VARCHAR(255) UNIQUE,
+                  password_hash TEXT,
+                  email_verified BOOLEAN DEFAULT FALSE,
+                  status VARCHAR(20) DEFAULT 'active',
+                  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+              );
+              
+              -- WebAuthn credentials table
+              CREATE TABLE IF NOT EXISTS webauthn_credentials (
+                  id TEXT PRIMARY KEY,
+                  user_id TEXT NOT NULL,
+                  credential_id TEXT UNIQUE NOT NULL,
+                  public_key BYTEA NOT NULL,
+                  counter BIGINT DEFAULT 0,
+                  name TEXT NOT NULL DEFAULT 'Security Key',
+                  transport TEXT NOT NULL DEFAULT '',
+                  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+              );
+              
+              -- WebAuthn sessions table  
+              CREATE TABLE IF NOT EXISTS webauthn_sessions (
+                  id TEXT PRIMARY KEY,
+                  user_id TEXT NOT NULL,
+                  challenge TEXT NOT NULL,
+                  challenge_type VARCHAR(20) NOT NULL,
+                  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+              );
+              
+              -- Create indices for better performance
+              CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+              CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+              CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_user_id ON webauthn_credentials(user_id);
+              CREATE INDEX IF NOT EXISTS idx_webauthn_sessions_user_id ON webauthn_sessions(user_id);
+              CREATE INDEX IF NOT EXISTS idx_webauthn_sessions_challenge ON webauthn_sessions(challenge);
+          EOF
+          
+          # Wait for migration job to complete
+          echo "Waiting for database migration to complete..."
+          kubectl wait --for=condition=complete job -l batch.kubernetes.io/job-name --timeout=300s -n glen-system || true
+          
+          # Check migration status
+          kubectl get jobs -n glen-system
+          
+          # Clean up old migration jobs (keep only latest 3)
+          kubectl get jobs -n glen-system --sort-by=.metadata.creationTimestamp -o name | head -n -3 | xargs -r kubectl delete -n glen-system
+
       - name: Wait for deployment to complete
         run: |
           kubectl rollout status deployment/glen-auth-service -n glen-system --timeout=180s || true
