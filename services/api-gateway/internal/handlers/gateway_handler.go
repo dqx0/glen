@@ -22,6 +22,7 @@ func NewGatewayHandler(serviceProxy *service.ServiceProxy) *GatewayHandler {
 
 // ProxyToUserService はユーザーサービスにリクエストをプロキシする
 func (gh *GatewayHandler) ProxyToUserService(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[PROXY] Proxying %s %s to user-service", r.Method, r.URL.Path)
 	gh.proxyToService(w, r, gh.serviceProxy.GetUserServiceURL(), "user-service")
 }
 
@@ -37,6 +38,8 @@ func (gh *GatewayHandler) ProxyToSocialService(w http.ResponseWriter, r *http.Re
 
 // proxyToService は指定されたサービスにリクエストをプロキシする
 func (gh *GatewayHandler) proxyToService(w http.ResponseWriter, r *http.Request, targetURL, serviceName string) {
+	log.Printf("[PROXY] Sending request to %s: %s %s", serviceName, r.Method, r.URL.Path)
+	
 	// プロキシリクエストの送信
 	resp, err := gh.serviceProxy.ProxyRequest(targetURL, r)
 	if err != nil {
@@ -45,6 +48,8 @@ func (gh *GatewayHandler) proxyToService(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	defer resp.Body.Close()
+	
+	log.Printf("[PROXY] Response from %s: status=%d", serviceName, resp.StatusCode)
 	
 	// レスポンスのコピー
 	if err := gh.serviceProxy.CopyResponse(w, resp); err != nil {
@@ -56,6 +61,9 @@ func (gh *GatewayHandler) proxyToService(w http.ResponseWriter, r *http.Request,
 	if resp.StatusCode >= 400 {
 		log.Printf("[PROXY ERROR] %s returned error status %d for %s %s", 
 			serviceName, resp.StatusCode, r.Method, r.URL.Path)
+	} else {
+		log.Printf("[PROXY SUCCESS] %s processed %s %s successfully", 
+			serviceName, r.Method, r.URL.Path)
 	}
 }
 

@@ -44,14 +44,18 @@ func (sp *ServiceProxy) ProxyRequest(targetURL string, originalReq *http.Request
 	targetURLParsed.Path = originalReq.URL.Path
 	targetURLParsed.RawQuery = originalReq.URL.RawQuery
 	
+	finalURL := targetURLParsed.String()
+	fmt.Printf("[PROXY] Proxying %s %s to %s\n", originalReq.Method, originalReq.URL.Path, finalURL)
+	
 	// 新しいリクエストの作成
 	proxyReq, err := http.NewRequestWithContext(
 		originalReq.Context(),
 		originalReq.Method,
-		targetURLParsed.String(),
+		finalURL,
 		originalReq.Body,
 	)
 	if err != nil {
+		fmt.Printf("[PROXY ERROR] Failed to create proxy request: %v\n", err)
 		return nil, fmt.Errorf("failed to create proxy request: %w", err)
 	}
 	
@@ -59,11 +63,14 @@ func (sp *ServiceProxy) ProxyRequest(targetURL string, originalReq *http.Request
 	sp.copyHeaders(originalReq, proxyReq)
 	
 	// プロキシリクエストの送信
+	fmt.Printf("[PROXY] Sending request to target service...\n")
 	resp, err := sp.httpClient.Do(proxyReq)
 	if err != nil {
+		fmt.Printf("[PROXY ERROR] Request failed: %v\n", err)
 		return nil, fmt.Errorf("proxy request failed: %w", err)
 	}
 	
+	fmt.Printf("[PROXY] Received response with status: %d\n", resp.StatusCode)
 	return resp, nil
 }
 
