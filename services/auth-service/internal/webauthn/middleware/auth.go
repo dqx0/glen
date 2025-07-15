@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -146,17 +148,64 @@ func RequireOwnerOrAdmin(userIDParam string) func(http.Handler) http.Handler {
 
 // GetUserID extracts user ID from request context
 func GetUserID(r *http.Request) (string, bool) {
-	userID, ok := r.Context().Value(UserIDKey).(string)
-	if !ok || userID == "" {
-		// フォールバック: ヘッダーからユーザーIDを取得（API Gatewayが設定）
-		userID = r.Header.Get("X-User-ID")
-		if userID != "" {
+	// 複数の方法でユーザーIDを取得を試みる
+
+	// 1. コンテキストから取得（認証ミドルウェアが設定）
+	if userID := r.Context().Value("user_id"); userID != nil {
+		if uid, ok := userID.(string); ok && uid != "" {
+			return uid, true
+		}
+	}
+
+	// 2. ヘッダーから取得（API Gatewayが設定）
+	if userID := r.Header.Get("X-User-ID"); userID != "" {
+		return userID, true
+	}
+
+	// 3. JWTトークンから取得（直接デコード）
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if userID := extractUserIDFromJWT(token); userID != "" {
 			return userID, true
 		}
-
-		return "", false
 	}
-	return userID, ok
+
+	return "", false
+}
+
+// extractUserIDFromJWT はJWTトークンからユーザーIDを抽出（簡易版、署名検証なし）
+func extractUserIDFromJWT(token string) string {
+	// JWT形式: header.payload.signature
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+
+	// ペイロード部分をデコード
+	payload := parts[1]
+	// Base64 URL デコード用にパディングを追加
+	if len(payload)%4 != 0 {
+		payload += strings.Repeat("=", 4-len(payload)%4)
+	}
+
+	decoded, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		return ""
+	}
+
+	// JSONをパース
+	var claims map[string]interface{}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		return ""
+	}
+
+	// user_idを取得
+	if userID, ok := claims["user_id"].(string); ok {
+		return userID
+	}
+
+	return ""
 }
 
 // IsAdmin checks if the user has admin privileges
