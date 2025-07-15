@@ -234,8 +234,19 @@ jobs:
                   - -path
                   - /migrations
                   - -database
-                  - postgres://glen_user:${{ secrets.DB_PASSWORD }}@${{ secrets.DB_HOST }}:5432/glen_prod?sslmode=require
+                  - postgres://glen_user:\$(DB_PASSWORD)@\$(DB_HOST):5432/glen_prod?sslmode=require
                   - up
+                  env:
+                  - name: DB_HOST
+                    valueFrom:
+                      configMapKeyRef:
+                        name: glen-config
+                        key: DB_HOST
+                  - name: DB_PASSWORD
+                    valueFrom:
+                      secretKeyRef:
+                        name: glen-secrets
+                        key: DB_PASSWORD
                   volumeMounts:
                   - name: migrations
                     mountPath: /migrations

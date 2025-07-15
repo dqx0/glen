@@ -8,6 +8,11 @@ metadata:
     version: v1
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: glen-frontend
@@ -42,8 +47,8 @@ spec:
           periodSeconds: 5
         resources:
           requests:
-            memory: "4Mi"
-            cpu: "5m"
+            memory: "16Mi"
+            cpu: "10m"
 ---
 apiVersion: v1
 kind: Service
