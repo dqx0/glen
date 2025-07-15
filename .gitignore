@@ -66,6 +66,9 @@ terraform.tfvars
 k8s-secrets.yaml
 secret.yaml
 
+# Allow LICENSE file
+!LICENSE
+
 # Test files
 test_output/
 

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: social-service
-        image: DOCKER_HUB_USERNAME/glen-social-service:latest
+        image: dqx0/glen-social-service:latest
         ports:
         - containerPort: 8083
         env:
@@ -122,11 +122,8 @@ spec:
           periodSeconds: 5
         resources:
           requests:
-            memory: "16Mi"
-            cpu: "25m"
-          limits:
-            memory: "32Mi"
-            cpu: "50m"
+            memory: "8Mi"
+            cpu: "10m"
 ---
 apiVersion: v1
 kind: Service

@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
       - name: auth-service
-        image: DOCKER_HUB_USERNAME/glen-auth-service:latest
+        image: dqx0/glen-auth-service:latest
         ports:
         - containerPort: 8081
         env:
@@ -107,11 +107,8 @@ spec:
           periodSeconds: 5
         resources:
           requests:
-            memory: "16Mi"
-            cpu: "25m"
-          limits:
-            memory: "32Mi"
-            cpu: "50m"
+            memory: "8Mi"
+            cpu: "10m"
 ---
 apiVersion: v1
 kind: Service
