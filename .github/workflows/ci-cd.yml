@@ -205,7 +205,7 @@ jobs:
           sed -i "s|DOCKER_HUB_USERNAME/glen-auth-service:latest|$DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA|g" infrastructure/k8s/auth-service-deployment.yaml
           sed -i "s|DOCKER_HUB_USERNAME/glen-user-service:latest|$DOCKER_HUB_USERNAME/glen-user-service:$GITHUB_SHA|g" infrastructure/k8s/user-service-deployment.yaml
           sed -i "s|DOCKER_HUB_USERNAME/glen-social-service:latest|$DOCKER_HUB_USERNAME/glen-social-service:$GITHUB_SHA|g" infrastructure/k8s/social-service-deployment.yaml
-          sed -i "s|DOCKER_HUB_USERNAME/glen-api-gateway:latest|$DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA|g" infrastructure/k8s/api-gateway-deployment.yaml
+          sed -i "s|DOCKER_HUB_USERNAME/glen-api-gateway:v1.0.1|$DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA|g" infrastructure/k8s/api-gateway-deployment.yaml
           sed -i "s|DOCKER_HUB_USERNAME/glen-frontend:latest|$DOCKER_HUB_USERNAME/glen-frontend:$GITHUB_SHA|g" infrastructure/k8s/frontend-deployment.yaml
 
           # Generate ConfigMap with actual IPs from secrets

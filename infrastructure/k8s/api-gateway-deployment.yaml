@@ -25,7 +25,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
       - name: api-gateway
-        image: dqx0/glen-api-gateway:latest
+        image: dqx0/glen-api-gateway:v1.0.1
         ports:
         - containerPort: 8080
         env:
