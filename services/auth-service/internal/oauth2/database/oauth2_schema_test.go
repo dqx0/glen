@@ -293,11 +293,11 @@ func TestOAuth2SchemaMigrationVersions(t *testing.T) {
 	
 	// Test migration versions are in order
 	expectedVersions := []string{
-		"005_create_oauth2_clients",
-		"006_create_oauth2_authorization_codes", 
-		"007_create_oauth2_access_tokens",
-		"008_create_oauth2_refresh_tokens",
-		"009_create_oauth2_indexes",
+		"5",
+		"6", 
+		"7",
+		"8",
+		"9",
 	}
 	
 	for i, migration := range migrations {

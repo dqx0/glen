@@ -132,31 +132,31 @@ func GetOAuth2Indexes() []string {
 func GetOAuth2Migrations() []database.Migration {
 	return []database.Migration{
 		{
-			Version: "005_create_oauth2_clients",
+			Version: "5",
 			Name:    "Create OAuth2 clients table",
 			UpSQL:   GetOAuth2ClientsSchema(),
 			DownSQL: "DROP TABLE IF EXISTS oauth2_clients",
 		},
 		{
-			Version: "006_create_oauth2_authorization_codes",
+			Version: "6",
 			Name:    "Create OAuth2 authorization codes table",
 			UpSQL:   GetOAuth2AuthorizationCodesSchema(),
 			DownSQL: "DROP TABLE IF EXISTS oauth2_authorization_codes",
 		},
 		{
-			Version: "007_create_oauth2_access_tokens",
+			Version: "7",
 			Name:    "Create OAuth2 access tokens table",
 			UpSQL:   GetOAuth2AccessTokensSchema(),
 			DownSQL: "DROP TABLE IF EXISTS oauth2_access_tokens",
 		},
 		{
-			Version: "008_create_oauth2_refresh_tokens",
+			Version: "8",
 			Name:    "Create OAuth2 refresh tokens table",
 			UpSQL:   GetOAuth2RefreshTokensSchema(),
 			DownSQL: "DROP TABLE IF EXISTS oauth2_refresh_tokens",
 		},
 		{
-			Version: "009_create_oauth2_indexes",
+			Version: "9",
 			Name:    "Create OAuth2 indexes",
 			UpSQL:   createOAuth2IndexesSQL(),
 			DownSQL: dropOAuth2IndexesSQL(),
