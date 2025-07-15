@@ -175,6 +175,7 @@ CREATE TABLE public.users (
     location text,
     is_active boolean DEFAULT true NOT NULL,
     is_verified boolean DEFAULT false NOT NULL,
+    email_verified boolean DEFAULT false NOT NULL,
     email_verification_token text,
     email_verification_expires_at timestamp with time zone,
     password_reset_token text,

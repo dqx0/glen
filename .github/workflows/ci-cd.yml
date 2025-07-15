@@ -235,17 +235,16 @@ jobs:
           # Clean up dynamically generated configmap
           rm -f infrastructure/k8s/configmap.yaml
 
-      - name: Reset and run database migrations
+      - name: Run database migrations
         run: |
           # Create ConfigMap from migration files
           kubectl create configmap glen-db-migrations \
-            --from-file=tools/migrator/migrations/20250716000001_full_schema.up.sql \
-            --from-file=tools/migrator/migrations/20250716000001_full_schema.down.sql \
+            --from-file=tools/migrator/migrations/ \
             --namespace=glen-system \
             --dry-run=client -o yaml | kubectl apply -f -
           
-          # Create database reset and migration job
-          JOB_NAME="glen-db-reset-$(date +%s)"
+          # Create database migration job
+          JOB_NAME="glen-db-migrate-$(date +%s)"
           cat <<EOF | kubectl apply -f -
           apiVersion: batch/v1
           kind: Job
@@ -265,7 +264,7 @@ jobs:
                   - /bin/sh
                   - -c
                   - |
-                    echo "Starting database reset and migration..."
+                    echo "Starting database migration..."
                     echo "Job: $JOB_NAME"
                     echo "Time: \$(date)"
                     
@@ -287,42 +286,6 @@ jobs:
                     done
                     echo "✓ Database connection successful"
                     
-                    # Drop all existing tables to reset database
-                    echo "Resetting database by dropping all tables..."
-                    
-                    # First, get list of tables to drop
-                    TABLES=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public';" | xargs)
-                    echo "Found tables: \$TABLES"
-                    
-                    # Drop each table individually
-                    for table in \$TABLES; do
-                        echo "Dropping table: \$table"
-                        PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "DROP TABLE IF EXISTS \"\$table\" CASCADE;" || echo "Failed to drop \$table"
-                    done
-                    
-                    # Drop sequences
-                    SEQUENCES=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT sequencename FROM pg_sequences WHERE schemaname = 'public';" | xargs)
-                    echo "Found sequences: \$SEQUENCES"
-                    for seq in \$SEQUENCES; do
-                        echo "Dropping sequence: \$seq"
-                        PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "DROP SEQUENCE IF EXISTS \"\$seq\" CASCADE;" || echo "Failed to drop \$seq"
-                    done
-                    
-                    # Drop functions
-                    FUNCTIONS=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT proname FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');" | xargs)
-                    echo "Found functions: \$FUNCTIONS"
-                    for func in \$FUNCTIONS; do
-                        echo "Dropping function: \$func"
-                        PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "DROP FUNCTION IF EXISTS \"\$func\" CASCADE;" || echo "Failed to drop \$func"
-                    done
-                    
-                    echo "Database reset completed"
-                    
-                    # Verify database is clean
-                    echo "Verifying database is clean..."
-                    TABLE_COUNT=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | xargs)
-                    echo "Tables remaining: \$TABLE_COUNT"
-                    
                     # List migration files
                     echo "Available migration files:"
                     ls -la /migrations/
@@ -335,8 +298,8 @@ jobs:
                         echo ""
                     done
                     
-                    # Run fresh migrations
-                    echo "Running fresh migrations..."
+                    # Run migrations
+                    echo "Running migrations..."
                     migrate -path /migrations -database "postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=require" up
                     
                     # Verify tables were created
@@ -347,7 +310,7 @@ jobs:
                     FINAL_COUNT=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | xargs)
                     echo "Final table count: \$FINAL_COUNT"
                     
-                    echo "Database reset and migration completed successfully at: \$(date)"
+                    echo "Database migration completed successfully at: \$(date)"
                   env:
                   - name: DB_HOST
                     valueFrom:
