@@ -127,35 +127,47 @@ jobs:
 
       - name: Build and push Docker images
         run: |
-          # Build and tag images with Docker Hub
-          docker build -t $DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA -f services/auth-service/Dockerfile services/auth-service
-          docker build -t $DOCKER_HUB_USERNAME/glen-user-service:$GITHUB_SHA -f services/user-service/Dockerfile services/user-service
-          docker build -t $DOCKER_HUB_USERNAME/glen-social-service:$GITHUB_SHA -f services/social-service/Dockerfile services/social-service
-          docker build -t $DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA -f services/api-gateway/Dockerfile services/api-gateway
-          docker build -t $DOCKER_HUB_USERNAME/glen-frontend:$GITHUB_SHA -f frontend/Dockerfile frontend \
-            --build-arg VITE_API_URL=https://api.glen.dqx0.com \
-            --build-arg VITE_APP_NAME="Glen ID Platform" \
-            --build-arg VITE_WEBAUTHN_ENABLED=true
-
-          # Push images
-          docker push $DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA
-          docker push $DOCKER_HUB_USERNAME/glen-user-service:$GITHUB_SHA
-          docker push $DOCKER_HUB_USERNAME/glen-social-service:$GITHUB_SHA
-          docker push $DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA
-          docker push $DOCKER_HUB_USERNAME/glen-frontend:$GITHUB_SHA
-
-          # Tag as latest
-          docker tag $DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-auth-service:latest
-          docker tag $DOCKER_HUB_USERNAME/glen-user-service:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-user-service:latest
-          docker tag $DOCKER_HUB_USERNAME/glen-social-service:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-social-service:latest
-          docker tag $DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-api-gateway:latest
-          docker tag $DOCKER_HUB_USERNAME/glen-frontend:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-frontend:latest
-
-          docker push $DOCKER_HUB_USERNAME/glen-auth-service:latest
-          docker push $DOCKER_HUB_USERNAME/glen-user-service:latest
-          docker push $DOCKER_HUB_USERNAME/glen-social-service:latest
-          docker push $DOCKER_HUB_USERNAME/glen-api-gateway:latest
-          docker push $DOCKER_HUB_USERNAME/glen-frontend:latest
+          # Build images in parallel
+          (
+            docker build -t $DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA -f services/auth-service/Dockerfile services/auth-service &&
+            docker tag $DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-auth-service:latest &&
+            docker push $DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA &&
+            docker push $DOCKER_HUB_USERNAME/glen-auth-service:latest
+          ) &
+          
+          (
+            docker build -t $DOCKER_HUB_USERNAME/glen-user-service:$GITHUB_SHA -f services/user-service/Dockerfile services/user-service &&
+            docker tag $DOCKER_HUB_USERNAME/glen-user-service:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-user-service:latest &&
+            docker push $DOCKER_HUB_USERNAME/glen-user-service:$GITHUB_SHA &&
+            docker push $DOCKER_HUB_USERNAME/glen-user-service:latest
+          ) &
+          
+          (
+            docker build -t $DOCKER_HUB_USERNAME/glen-social-service:$GITHUB_SHA -f services/social-service/Dockerfile services/social-service &&
+            docker tag $DOCKER_HUB_USERNAME/glen-social-service:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-social-service:latest &&
+            docker push $DOCKER_HUB_USERNAME/glen-social-service:$GITHUB_SHA &&
+            docker push $DOCKER_HUB_USERNAME/glen-social-service:latest
+          ) &
+          
+          (
+            docker build -t $DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA -f services/api-gateway/Dockerfile services/api-gateway &&
+            docker tag $DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-api-gateway:latest &&
+            docker push $DOCKER_HUB_USERNAME/glen-api-gateway:$GITHUB_SHA &&
+            docker push $DOCKER_HUB_USERNAME/glen-api-gateway:latest
+          ) &
+          
+          (
+            docker build -t $DOCKER_HUB_USERNAME/glen-frontend:$GITHUB_SHA -f frontend/Dockerfile frontend \
+              --build-arg VITE_API_URL=https://api.glen.dqx0.com \
+              --build-arg VITE_APP_NAME="Glen ID Platform" \
+              --build-arg VITE_WEBAUTHN_ENABLED=true &&
+            docker tag $DOCKER_HUB_USERNAME/glen-frontend:$GITHUB_SHA $DOCKER_HUB_USERNAME/glen-frontend:latest &&
+            docker push $DOCKER_HUB_USERNAME/glen-frontend:$GITHUB_SHA &&
+            docker push $DOCKER_HUB_USERNAME/glen-frontend:latest
+          ) &
+          
+          # Wait for all background jobs to complete
+          wait
 
   deploy:
     needs: [build]
