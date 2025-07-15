@@ -174,8 +174,11 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Configure gcloud project
+        run: gcloud config set project glen-465915
+
       - name: Get GKE credentials
-        run: gcloud container clusters get-credentials $GKE_CLUSTER --zone $GKE_ZONE --project $GCP_PROJECT_ID
+        run: gcloud container clusters get-credentials glen-cluster --zone asia-northeast1-a --project glen-465915
 
       - name: Deploy to Kubernetes
         run: |
