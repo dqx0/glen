@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	authService "github.com/dqx0/glen/auth-service/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
-	authService "github.com/dqx0/glen/auth-service/internal/service"
 )
 
 // AuthContextKey is the key for storing auth context
@@ -23,9 +23,9 @@ const (
 // JWTConfig holds JWT configuration compatible with auth-service
 type JWTConfig struct {
 	jwtService    *authService.JWTService
-	Secret        []byte               `json:"secret"`        // For backward compatibility with tests
-	SigningMethod jwt.SigningMethod    `json:"signing_method"` // For backward compatibility with tests
-	Expiration    time.Duration        `json:"expiration"`    // For backward compatibility with tests
+	Secret        []byte            `json:"secret"`         // For backward compatibility with tests
+	SigningMethod jwt.SigningMethod `json:"signing_method"` // For backward compatibility with tests
+	Expiration    time.Duration     `json:"expiration"`     // For backward compatibility with tests
 }
 
 // NewJWTConfig creates a new JWT configuration using auth-service JWT service
@@ -40,13 +40,13 @@ func (c *JWTConfig) ValidateToken(tokenString string) (*authService.Claims, erro
 	if c.jwtService != nil {
 		return c.jwtService.ValidateToken(tokenString)
 	}
-	
+
 	// Fallback to test implementation
 	claims, err := ValidateToken(c, tokenString)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert AuthClaims to authService.Claims
 	scopes := []string{}
 	if claims.IsAdmin {
@@ -94,7 +94,7 @@ func JWTMiddleware(config *JWTConfig) func(http.Handler) http.Handler {
 			// Add claims to request context
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, IsAdminKey, isAdmin)
-			
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -108,7 +108,7 @@ func RequireAdmin(next http.Handler) http.Handler {
 			http.Error(w, "Admin access required", http.StatusForbidden)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -124,10 +124,10 @@ func RequireOwnerOrAdmin(userIDParam string) func(http.Handler) http.Handler {
 			}
 
 			isAdmin, _ := r.Context().Value(IsAdminKey).(bool)
-			
+
 			// Extract user ID from URL parameters using chi
 			requestedUserID := chi.URLParam(r, userIDParam)
-			
+
 			// Fallback to query parameter if URL param not found
 			if requestedUserID == "" {
 				requestedUserID = r.URL.Query().Get(userIDParam)
@@ -138,7 +138,7 @@ func RequireOwnerOrAdmin(userIDParam string) func(http.Handler) http.Handler {
 				http.Error(w, "Access denied", http.StatusForbidden)
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -147,6 +147,15 @@ func RequireOwnerOrAdmin(userIDParam string) func(http.Handler) http.Handler {
 // GetUserID extracts user ID from request context
 func GetUserID(r *http.Request) (string, bool) {
 	userID, ok := r.Context().Value(UserIDKey).(string)
+	if !ok || userID == "" {
+		// フォールバック: ヘッダーからユーザーIDを取得（API Gatewayが設定）
+		userID = r.Header.Get("X-User-ID")
+		if userID != "" {
+			return userID, true
+		}
+
+		return "", false
+	}
 	return userID, ok
 }
 
@@ -169,7 +178,7 @@ func DevModeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// In dev mode, get user ID from X-User-ID header (set by API Gateway auth middleware)
 		userID := r.Header.Get("X-User-ID")
-		
+
 		// If no user ID is present, this means the user is not authenticated
 		if userID == "" {
 			http.Error(w, "Authentication required", http.StatusUnauthorized)
@@ -177,7 +186,7 @@ func DevModeMiddleware(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		ctx = context.WithValue(ctx, IsAdminKey, false)
-		
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -187,13 +196,13 @@ func DevModeAdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// In dev mode, get user ID from X-User-ID header (set by API Gateway auth middleware)
 		userID := r.Header.Get("X-User-ID")
-		
+
 		// If no user ID is present, this means the user is not authenticated
 		if userID == "" {
 			http.Error(w, "Authentication required", http.StatusUnauthorized)
 			return
 		}
-		
+
 		// In dev mode, only specific admin user IDs are treated as admin
 		// Check if this is an admin user (based on admin user ID pattern or specific IDs)
 		isAdmin := false
@@ -201,16 +210,16 @@ func DevModeAdminMiddleware(next http.Handler) http.Handler {
 		if userID == adminTestUserID {
 			isAdmin = true
 		}
-		
+
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		ctx = context.WithValue(ctx, IsAdminKey, isAdmin)
-		
+
 		// If admin privileges are required but user is not admin, deny access
 		if !isAdmin {
 			http.Error(w, "Admin access required", http.StatusForbidden)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -241,7 +250,7 @@ func GenerateToken(config *JWTConfig, userID string, isAdmin bool) (string, erro
 	if expiration == 0 {
 		expiration = 24 * time.Hour
 	}
-	
+
 	claims := AuthClaims{
 		UserID:  userID,
 		IsAdmin: isAdmin,
@@ -256,14 +265,14 @@ func GenerateToken(config *JWTConfig, userID string, isAdmin bool) (string, erro
 	if signingMethod == nil {
 		signingMethod = jwt.SigningMethodHS256
 	}
-	
+
 	token := jwt.NewWithClaims(signingMethod, claims)
-	
+
 	secret := config.Secret
 	if len(secret) == 0 {
 		secret = []byte("test-secret-key-for-webauthn-middleware")
 	}
-	
+
 	return token.SignedString(secret)
 }
 
@@ -274,7 +283,7 @@ func ValidateToken(config *JWTConfig, tokenString string) (*AuthClaims, error) {
 	if len(secret) == 0 {
 		secret = []byte("test-secret-key-for-webauthn-middleware")
 	}
-	
+
 	token, err := jwt.ParseWithClaims(tokenString, &AuthClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return secret, nil
 	})
