@@ -100,7 +100,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 			} else {
 				// デバッグ用：実際のエラーをログに出力
 				fmt.Printf("Registration error: %v\n", err)
-				h.writeErrorResponse(w, http.StatusInternalServerError, "internal server error")
+				h.writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("internal server error: %v", err))
 			}
 		}
 		return

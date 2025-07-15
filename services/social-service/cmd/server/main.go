@@ -130,7 +130,12 @@ func connectDB() (*sql.DB, error) {
 			dbname = "glen_dev"
 		}
 
-		dbURL = "postgres://" + user + ":" + password + "@" + host + ":" + port + "/" + dbname + "?sslmode=disable"
+		sslmode := os.Getenv("DB_SSLMODE")
+		if sslmode == "" {
+			sslmode = "disable"
+		}
+
+		dbURL = "postgres://" + user + ":" + password + "@" + host + ":" + port + "/" + dbname + "?sslmode=" + sslmode
 	}
 
 	db, err := sql.Open("postgres", dbURL)
