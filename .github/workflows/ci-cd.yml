@@ -289,43 +289,55 @@ jobs:
                     
                     # Drop all existing tables to reset database
                     echo "Resetting database by dropping all tables..."
-                    PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "
-                      DO \$\$
-                      DECLARE
-                          r RECORD;
-                      BEGIN
-                          -- Drop all tables
-                          FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') 
-                          LOOP
-                              EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-                          END LOOP;
-                          
-                          -- Drop all sequences
-                          FOR r IN (SELECT sequencename FROM pg_sequences WHERE schemaname = 'public')
-                          LOOP
-                              EXECUTE 'DROP SEQUENCE IF EXISTS ' || quote_ident(r.sequencename) || ' CASCADE';
-                          END LOOP;
-                          
-                          -- Drop all functions
-                          FOR r IN (SELECT proname FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public'))
-                          LOOP
-                              EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.proname) || ' CASCADE';
-                          END LOOP;
-                          
-                          -- Drop migrate schema_migrations table if exists
-                          DROP TABLE IF EXISTS schema_migrations;
-                      END
-                      \$\$;
-                    " || echo "Database reset completed (some objects may not have existed)"
+                    
+                    # First, get list of tables to drop
+                    TABLES=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public';" | xargs)
+                    echo "Found tables: \$TABLES"
+                    
+                    # Drop each table individually
+                    for table in \$TABLES; do
+                        echo "Dropping table: \$table"
+                        PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "DROP TABLE IF EXISTS \"\$table\" CASCADE;" || echo "Failed to drop \$table"
+                    done
+                    
+                    # Drop sequences
+                    SEQUENCES=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT sequencename FROM pg_sequences WHERE schemaname = 'public';" | xargs)
+                    echo "Found sequences: \$SEQUENCES"
+                    for seq in \$SEQUENCES; do
+                        echo "Dropping sequence: \$seq"
+                        PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "DROP SEQUENCE IF EXISTS \"\$seq\" CASCADE;" || echo "Failed to drop \$seq"
+                    done
+                    
+                    # Drop functions
+                    FUNCTIONS=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT proname FROM pg_proc WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');" | xargs)
+                    echo "Found functions: \$FUNCTIONS"
+                    for func in \$FUNCTIONS; do
+                        echo "Dropping function: \$func"
+                        PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "DROP FUNCTION IF EXISTS \"\$func\" CASCADE;" || echo "Failed to drop \$func"
+                    done
+                    
+                    echo "Database reset completed"
                     
                     # Verify database is clean
                     echo "Verifying database is clean..."
                     TABLE_COUNT=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | xargs)
                     echo "Tables remaining: \$TABLE_COUNT"
                     
+                    # List migration files
+                    echo "Available migration files:"
+                    ls -la /migrations/
+                    
+                    # Show migration file content
+                    echo "Migration file content:"
+                    for file in /migrations/*.sql; do
+                        echo "=== \$file ==="
+                        head -20 "\$file"
+                        echo ""
+                    done
+                    
                     # Run fresh migrations
                     echo "Running fresh migrations..."
-                    migrate -path /migrations -database "postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=require" up -verbose
+                    migrate -path /migrations -database "postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=require" up
                     
                     # Verify tables were created
                     echo "Verifying tables were created..."
