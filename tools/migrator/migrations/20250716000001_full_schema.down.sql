@@ -17,6 +17,7 @@ ALTER TABLE IF EXISTS public.webauthn_credentials DROP CONSTRAINT IF EXISTS weba
 ALTER TABLE IF EXISTS public.webauthn_sessions DROP CONSTRAINT IF EXISTS webauthn_sessions_user_id_fkey;
 
 -- Drop all tables
+DROP TABLE IF EXISTS public.cors_dynamic_origins CASCADE;
 DROP TABLE IF EXISTS public.webauthn_sessions CASCADE;
 DROP TABLE IF EXISTS public.webauthn_credentials CASCADE;
 DROP TABLE IF EXISTS public.oauth2_refresh_tokens CASCADE;

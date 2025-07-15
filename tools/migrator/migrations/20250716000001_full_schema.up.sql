@@ -176,6 +176,7 @@ CREATE TABLE public.users (
     is_active boolean DEFAULT true NOT NULL,
     is_verified boolean DEFAULT false NOT NULL,
     email_verified boolean DEFAULT false NOT NULL,
+    status character varying(20) DEFAULT 'active'::character varying NOT NULL,
     email_verification_token text,
     email_verification_expires_at timestamp with time zone,
     password_reset_token text,
@@ -216,6 +217,18 @@ CREATE TABLE public.webauthn_sessions (
     session_data jsonb NOT NULL,
     expires_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT now()
+);
+
+--
+-- Name: cors_dynamic_origins; Type: TABLE; Schema: public; Owner: glen_dev
+--
+
+CREATE TABLE public.cors_dynamic_origins (
+    id SERIAL PRIMARY KEY,
+    origin text NOT NULL,
+    oauth2_client_id text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    UNIQUE (origin, oauth2_client_id)
 );
 
 --
@@ -316,6 +329,8 @@ CREATE INDEX idx_webauthn_credentials_user_id ON public.webauthn_credentials USI
 CREATE INDEX idx_webauthn_sessions_challenge ON public.webauthn_sessions USING btree (challenge);
 CREATE INDEX idx_webauthn_sessions_expires_at ON public.webauthn_sessions USING btree (expires_at);
 CREATE INDEX idx_webauthn_sessions_user_id ON public.webauthn_sessions USING btree (user_id);
+CREATE INDEX idx_cors_dynamic_origins_origin ON public.cors_dynamic_origins USING btree (origin);
+CREATE INDEX idx_cors_dynamic_origins_client_id ON public.cors_dynamic_origins USING btree (oauth2_client_id);
 
 --
 -- Name: Triggers
