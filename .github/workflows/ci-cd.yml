@@ -245,6 +245,13 @@ jobs:
                   - /bin/sh
                   - -c
                   - |
+                    # Check if database is dirty and force clean if needed
+                    if migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" version 2>&1 | grep -q "dirty"; then
+                      echo "Database is in dirty state, forcing clean..."
+                      migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" force 20250706000001
+                    fi
+                    
+                    # Run migrations
                     migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" up
                   env:
                   - name: DB_HOST
