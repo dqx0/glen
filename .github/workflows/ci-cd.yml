@@ -242,12 +242,10 @@ jobs:
                 - name: migrator
                   image: migrate/migrate:v4.16.2
                   command:
-                  - migrate
-                  - -path
-                  - /migrations
-                  - -database
-                  - postgres://glen_user:\$(DB_PASSWORD)@\$(DB_HOST):5432/glen_prod?sslmode=require
-                  - up
+                  - /bin/sh
+                  - -c
+                  - |
+                    migrate -path /migrations -database "postgres://glen_user:\$DB_PASSWORD@\$DB_HOST:5432/glen_prod?sslmode=require" up
                   env:
                   - name: DB_HOST
                     valueFrom:
