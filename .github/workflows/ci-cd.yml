@@ -177,10 +177,17 @@ jobs:
       - name: Configure gcloud project
         run: gcloud config set project glen-465915
 
+      - name: Install GKE auth plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin
+          export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+
       - name: Get GKE credentials
         run: gcloud container clusters get-credentials glen-cluster --zone asia-northeast1-a --project glen-465915
 
       - name: Deploy to Kubernetes
+        env:
+          USE_GKE_GCLOUD_AUTH_PLUGIN: True
         run: |
           # Update image tags in deployment files for Docker Hub
           sed -i "s|DOCKER_HUB_USERNAME/glen-auth-service:latest|$DOCKER_HUB_USERNAME/glen-auth-service:$GITHUB_SHA|g" infrastructure/k8s/auth-service-deployment.yaml
