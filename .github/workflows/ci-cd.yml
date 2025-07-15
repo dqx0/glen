@@ -239,7 +239,8 @@ jobs:
         run: |
           # Create ConfigMap from migration file
           kubectl create configmap glen-db-migrations \
-            --from-file=tools/migrator/migrations/ \
+            --from-file=tools/migrator/migrations/tools/migrator/migrations/20250715000001_add_missing_tables.down.sql \
+            --from-file=tools/migrator/migrations/tools/migrator/migrations/20250715000001_add_missing_tables.up.sql \
             --namespace=glen-system \
             --dry-run=client -o yaml | kubectl apply -f -
           
