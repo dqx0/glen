@@ -22,6 +22,7 @@ spec:
         app: glen-auth-service
         version: v1
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
       - name: auth-service
         image: dqx0/glen-auth-service:latest
@@ -114,6 +115,9 @@ spec:
           requests:
             memory: "8Mi"
             cpu: "10m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
 ---
 apiVersion: v1
 kind: Service
