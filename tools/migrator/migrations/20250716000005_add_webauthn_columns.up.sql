@@ -6,3 +6,8 @@ ALTER TABLE webauthn_credentials ADD COLUMN IF NOT EXISTS sign_count integer DEF
 ALTER TABLE webauthn_credentials ADD COLUMN IF NOT EXISTS clone_warning boolean DEFAULT false NOT NULL;
 ALTER TABLE webauthn_credentials ADD COLUMN IF NOT EXISTS name text;
 ALTER TABLE webauthn_credentials ADD COLUMN IF NOT EXISTS last_used_at timestamp with time zone;
+
+-- Update existing credentials to have proper default values
+UPDATE webauthn_credentials SET sign_count = 0 WHERE sign_count IS NULL;
+UPDATE webauthn_credentials SET clone_warning = false WHERE clone_warning IS NULL;
+UPDATE webauthn_credentials SET name = 'Default Credential' WHERE name IS NULL OR name = '';
