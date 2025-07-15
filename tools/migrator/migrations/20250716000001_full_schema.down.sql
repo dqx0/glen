@@ -26,7 +26,7 @@ DROP TABLE IF EXISTS public.oauth2_clients CASCADE;
 DROP TABLE IF EXISTS public.social_accounts CASCADE;
 DROP TABLE IF EXISTS public.api_tokens CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
-DROP TABLE IF EXISTS public.schema_migrations CASCADE;
+-- DROP TABLE IF EXISTS public.schema_migrations CASCADE; -- Managed by migration tool
 
 -- Drop functions
 DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;

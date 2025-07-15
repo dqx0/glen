@@ -134,13 +134,14 @@ CREATE TABLE public.oauth2_refresh_tokens (
 
 --
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: glen_dev
+-- Note: This table is managed by the migration tool itself, so we don't create it
 --
 
-CREATE TABLE public.schema_migrations (
-    version character varying(255) NOT NULL,
-    dirty boolean DEFAULT false NOT NULL,
-    applied_at timestamp with time zone DEFAULT now()
-);
+-- CREATE TABLE public.schema_migrations (
+--     version character varying(255) NOT NULL,
+--     dirty boolean DEFAULT false NOT NULL,
+--     applied_at timestamp with time zone DEFAULT now()
+-- );
 
 --
 -- Name: social_accounts; Type: TABLE; Schema: public; Owner: glen_dev
@@ -235,8 +236,8 @@ ALTER TABLE ONLY public.oauth2_clients
 ALTER TABLE ONLY public.oauth2_refresh_tokens
     ADD CONSTRAINT oauth2_refresh_tokens_pkey PRIMARY KEY (id);
 
-ALTER TABLE ONLY public.schema_migrations
-    ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+-- ALTER TABLE ONLY public.schema_migrations
+--     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
 
 ALTER TABLE ONLY public.social_accounts
     ADD CONSTRAINT social_accounts_pkey PRIMARY KEY (id);
