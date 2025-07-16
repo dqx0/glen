@@ -61,14 +61,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 
 	// WebAuthn設定
-	webAuthnConfig := &config.WebAuthnConfig{
-		RPDisplayName: "Glen Authentication System",
-		RPID:          "localhost",
-		RPOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "https://glen.dqx0.com"},
-		RPIcon:        "",
-		Timeout:       60000, // 60 seconds
-		Debug:         true,
-	}
+	webAuthnConfig := getWebAuthnConfig()
 
 	// WebAuthnモジュールの作成
 	webAuthnModule, err := webauthn.NewWebAuthnModule(sqlxDB, redisClient, webAuthnConfig)
@@ -217,18 +210,18 @@ func getRedisAddr() string {
 	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
 		return addr
 	}
-	
+
 	// Then check REDIS_HOST and REDIS_PORT for Kubernetes deployment
 	host := os.Getenv("REDIS_HOST")
 	port := os.Getenv("REDIS_PORT")
-	
+
 	if host != "" {
 		if port == "" {
 			port = "6379" // Default Redis port
 		}
 		return host + ":" + port
 	}
-	
+
 	// Default fallback
 	return "localhost:6379"
 }
@@ -238,4 +231,30 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getWebAuthnConfig() *config.WebAuthnConfig {
+	env := getEnvOrDefault("ENV", "production")
+
+	if env == "production" {
+		// 本番環境設定
+		return &config.WebAuthnConfig{
+			RPDisplayName: "Glen Authentication System",
+			RPID:          "glen.dqx0.com",
+			RPOrigins:     []string{"https://glen.dqx0.com", "https://api.glen.dqx0.com"},
+			RPIcon:        "",
+			Timeout:       60000, // 60 seconds
+			Debug:         false,
+		}
+	} else {
+		// 開発環境設定
+		return &config.WebAuthnConfig{
+			RPDisplayName: "Glen Authentication System",
+			RPID:          "localhost",
+			RPOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
+			RPIcon:        "",
+			Timeout:       60000, // 60 seconds
+			Debug:         true,
+		}
+	}
 }
