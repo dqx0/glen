@@ -72,11 +72,18 @@ func (m *Migrator) ApplyMigration(ctx context.Context, migration Migration) erro
 	}
 	
 	// Record migration as applied
+	// Try to insert with name column first, fallback to without name column
 	_, err = tx.ExecContext(ctx, 
 		"INSERT INTO schema_migrations (version, name, dirty, applied_at) VALUES ($1, $2, $3, $4)",
 		migration.Version, migration.Name, false, time.Now())
 	if err != nil {
-		return fmt.Errorf("failed to record migration %s: %w", migration.Version, err)
+		// If the insert fails (likely due to missing name column), try without name column
+		_, err = tx.ExecContext(ctx, 
+			"INSERT INTO schema_migrations (version, dirty, applied_at) VALUES ($1, $2, $3)",
+			migration.Version, false, time.Now())
+		if err != nil {
+			return fmt.Errorf("failed to record migration %s: %w", migration.Version, err)
+		}
 	}
 	
 	// Commit transaction
