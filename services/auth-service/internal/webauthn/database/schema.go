@@ -101,11 +101,44 @@ func (m *Migrator) IsMigrationApplied(ctx context.Context, version string) (bool
 
 // GetAppliedMigrations returns all applied migrations
 func (m *Migrator) GetAppliedMigrations(ctx context.Context) ([]Migration, error) {
+	// Try to query with name column first, fallback to without name column
 	rows, err := m.db.QueryContext(ctx, 
 		"SELECT version, COALESCE(name, ''), applied_at FROM schema_migrations ORDER BY applied_at")
+	
 	if err != nil {
-		return nil, err
+		// If the query fails (likely due to missing name column), try without name column
+		rows, err = m.db.QueryContext(ctx, 
+			"SELECT version, applied_at FROM schema_migrations ORDER BY applied_at")
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		
+		var migrations []Migration
+		for rows.Next() {
+			var migration Migration
+			var appliedAtStr string
+			err := rows.Scan(&migration.Version, &appliedAtStr)
+			if err != nil {
+				return nil, err
+			}
+			migration.Name = "" // Set default empty name
+			
+			// Parse the time string
+			if appliedAtStr != "" {
+				// Try multiple time formats
+				if t, err := time.Parse(time.RFC3339, appliedAtStr); err == nil {
+					migration.AppliedAt = &t
+				} else if t, err := time.Parse("2006-01-02 15:04:05", appliedAtStr); err == nil {
+					migration.AppliedAt = &t
+				}
+			}
+			
+			migrations = append(migrations, migration)
+		}
+		return migrations, nil
 	}
+	
 	defer rows.Close()
 	
 	var migrations []Migration
