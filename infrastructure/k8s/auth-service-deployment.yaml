@@ -74,6 +74,8 @@ spec:
             configMapKeyRef:
               name: glen-config
               key: REDIS_PORT
+        - name: REDIS_ADDR
+          value: "$(REDIS_HOST):$(REDIS_PORT)"
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:

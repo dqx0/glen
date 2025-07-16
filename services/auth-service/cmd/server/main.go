@@ -213,9 +213,23 @@ func connectDB() (*sql.DB, error) {
 }
 
 func getRedisAddr() string {
+	// First check REDIS_ADDR for backward compatibility
 	if addr := os.Getenv("REDIS_ADDR"); addr != "" {
 		return addr
 	}
+	
+	// Then check REDIS_HOST and REDIS_PORT for Kubernetes deployment
+	host := os.Getenv("REDIS_HOST")
+	port := os.Getenv("REDIS_PORT")
+	
+	if host != "" {
+		if port == "" {
+			port = "6379" // Default Redis port
+		}
+		return host + ":" + port
+	}
+	
+	// Default fallback
 	return "localhost:6379"
 }
 
