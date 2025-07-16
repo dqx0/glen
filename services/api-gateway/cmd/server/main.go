@@ -85,11 +85,14 @@ func main() {
 	mux.HandleFunc("/api/v1/auth/login", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
 	mux.HandleFunc("/api/v1/auth/refresh", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
 
-	// WebAuthn関連（認証不要 - 登録・認証フロー）
-	mux.HandleFunc("/api/v1/webauthn/register/start", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
-	mux.HandleFunc("/api/v1/webauthn/register/finish", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
+	// WebAuthn関連（認証・登録フロー）
+	// 認証不要（ログイン時のみ）
 	mux.HandleFunc("/api/v1/webauthn/authenticate/start", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
 	mux.HandleFunc("/api/v1/webauthn/authenticate/finish", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToAuthService)))
+	
+	// 認証必要（登録時）
+	mux.HandleFunc("/api/v1/webauthn/register/start", loggingMiddleware.Handle(corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService))))
+	mux.HandleFunc("/api/v1/webauthn/register/finish", loggingMiddleware.Handle(corsMiddleware.Handle(authMiddleware.Handle(gatewayHandler.ProxyToAuthService))))
 
 	// ソーシャルログイン（認証不要 - OAuth2フロー）
 	mux.HandleFunc("/api/v1/social/authorize", loggingMiddleware.Handle(corsMiddleware.Handle(gatewayHandler.ProxyToSocialService)))
@@ -123,7 +126,7 @@ func main() {
 	// WebAuthn認証器管理（特定のパス以外）
 	mux.HandleFunc("/api/v1/webauthn/", loggingMiddleware.Handle(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		// 認証不要のパスをチェック
+		// 上記で処理済みのパスをチェック
 		if path == "/api/v1/webauthn/register/start" || 
 		   path == "/api/v1/webauthn/register/finish" ||
 		   path == "/api/v1/webauthn/authenticate/start" ||

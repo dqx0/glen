@@ -59,7 +59,10 @@ func (env *TestEnvironment) setupTestSchema() {
 		public_key BLOB NOT NULL,
 		attestation_type TEXT,
 		transport TEXT,
-		flags TEXT,
+		user_present BOOLEAN NOT NULL DEFAULT FALSE,
+		user_verified BOOLEAN NOT NULL DEFAULT FALSE,
+		backup_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+		backup_state BOOLEAN NOT NULL DEFAULT FALSE,
 		sign_count INTEGER DEFAULT 0,
 		clone_warning BOOLEAN DEFAULT FALSE,
 		created_at DATETIME,
@@ -137,8 +140,9 @@ func (env *TestEnvironment) CreateTestCredential(t *testing.T, userID string) *m
 	query := `
 		INSERT INTO webauthn_credentials (
 			id, user_id, credential_id, public_key, attestation_type,
-			transport, flags, sign_count, clone_warning, created_at, updated_at, name
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			transport, user_present, user_verified, backup_eligible, backup_state,
+			sign_count, clone_warning, created_at, updated_at, name
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := env.DB.Exec(query,
 		credential.ID,
@@ -147,7 +151,10 @@ func (env *TestEnvironment) CreateTestCredential(t *testing.T, userID string) *m
 		credential.PublicKey,
 		credential.AttestationType,
 		models.TransportsToString(credential.Transport),
-		"{}",  // Simplified flags for SQLite
+		credential.Flags.UserPresent,
+		credential.Flags.UserVerified,
+		credential.Flags.BackupEligible,
+		credential.Flags.BackupState,
 		credential.SignCount,
 		credential.CloneWarning,
 		credential.CreatedAt,

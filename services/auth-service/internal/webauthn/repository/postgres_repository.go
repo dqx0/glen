@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -50,31 +49,41 @@ func (r *postgresWebAuthnRepository) CreateCredential(ctx context.Context, crede
 	query := `
 		INSERT INTO webauthn_credentials (
 			id, user_id, credential_id, public_key, attestation_type,
-			transport, flags, sign_count, clone_warning, name, created_at, updated_at
+			transport, user_present, user_verified, backup_eligible, backup_state,
+			sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
 		)`
 
-	// Convert transport slice to comma-separated string for storage
-	transportStr := models.TransportsToString(credential.Transport)
-	
-	// Convert flags to JSON for storage
-	flagsJSON, err := json.Marshal(credential.Flags)
-	if err != nil {
-		return NewRepositoryError(ErrRepositoryInternal, "Failed to marshal flags", err)
+	// Convert transport slice for database storage
+	var transportValue interface{}
+	if r.db.DriverName() == "postgres" {
+		// PostgreSQL: use array format
+		transportStrs := make([]string, len(credential.Transport))
+		for i, transport := range credential.Transport {
+			transportStrs[i] = string(transport)
+		}
+		transportValue = pq.Array(transportStrs)
+	} else {
+		// SQLite: use comma-separated string
+		transportValue = models.TransportsToString(credential.Transport)
 	}
 
-	_, err = r.db.ExecContext(ctx, query,
+	_, err := r.db.ExecContext(ctx, query,
 		credential.ID,
 		credential.UserID,
 		credential.CredentialID,
 		credential.PublicKey,
 		credential.AttestationType,
-		transportStr,
-		string(flagsJSON),
+		transportValue,
+		credential.Flags.UserPresent,
+		credential.Flags.UserVerified,
+		credential.Flags.BackupEligible,
+		credential.Flags.BackupState,
 		credential.SignCount,
 		credential.CloneWarning,
 		credential.Name,
+		credential.LastUsedAt,
 		credential.CreatedAt,
 		credential.UpdatedAt,
 	)
@@ -116,14 +125,16 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 	// Use database-agnostic placeholder
 	query := `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
+			   transport, user_present, user_verified, backup_eligible, backup_state,
+			   sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE user_id = ?
 		ORDER BY created_at DESC`
 	if r.db.DriverName() == "postgres" {
 		query = `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
+			   transport, user_present, user_verified, backup_eligible, backup_state,
+			   sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE user_id = $1
 		ORDER BY created_at DESC`
@@ -138,8 +149,16 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 	var credentials []*models.WebAuthnCredential
 	for rows.Next() {
 		credential := &models.WebAuthnCredential{}
+		var transportValue interface{}
+		var transportStrs []string
 		var transportStr string
-		var flagsJSON string
+		
+		// Prepare transport scanning based on database type
+		if r.db.DriverName() == "postgres" {
+			transportValue = pq.Array(&transportStrs)
+		} else {
+			transportValue = &transportStr
+		}
 		
 		err := rows.Scan(
 			&credential.ID,
@@ -147,8 +166,11 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 			&credential.CredentialID,
 			&credential.PublicKey,
 			&credential.AttestationType,
-			&transportStr,
-			&flagsJSON,
+			transportValue,
+			&credential.Flags.UserPresent,
+			&credential.Flags.UserVerified,
+			&credential.Flags.BackupEligible,
+			&credential.Flags.BackupState,
 			&credential.SignCount,
 			&credential.CloneWarning,
 			&credential.Name,
@@ -160,12 +182,16 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 			return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to scan credential", err)
 		}
 
-		// Convert transport string back to slice
-		credential.Transport = models.StringToTransports(transportStr)
-		
-		// Convert flags JSON back to struct
-		if err := json.Unmarshal([]byte(flagsJSON), &credential.Flags); err != nil {
-			return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to unmarshal flags", err)
+		// Convert transport data back to slice of AuthenticatorTransport
+		if r.db.DriverName() == "postgres" {
+			// PostgreSQL: convert from array
+			credential.Transport = make([]models.AuthenticatorTransport, len(transportStrs))
+			for i, ts := range transportStrs {
+				credential.Transport[i] = models.AuthenticatorTransport(ts)
+			}
+		} else {
+			// SQLite: convert from comma-separated string
+			credential.Transport = models.StringToTransports(transportStr)
 		}
 		
 		credentials = append(credentials, credential)
@@ -185,13 +211,22 @@ func (r *postgresWebAuthnRepository) GetCredentialByID(ctx context.Context, cred
 
 	query := `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
+			   transport, user_present, user_verified, backup_eligible, backup_state,
+			   sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE credential_id = $1`
 
 	credential := &models.WebAuthnCredential{}
+	var transportValue interface{}
+	var transportStrs []string
 	var transportStr string
-	var flagsJSON string
+
+	// Prepare transport scanning based on database type
+	if r.db.DriverName() == "postgres" {
+		transportValue = pq.Array(&transportStrs)
+	} else {
+		transportValue = &transportStr
+	}
 
 	err := r.db.QueryRowContext(ctx, query, credentialID).Scan(
 		&credential.ID,
@@ -199,8 +234,11 @@ func (r *postgresWebAuthnRepository) GetCredentialByID(ctx context.Context, cred
 		&credential.CredentialID,
 		&credential.PublicKey,
 		&credential.AttestationType,
-		&transportStr,
-		&flagsJSON,
+		transportValue,
+		&credential.Flags.UserPresent,
+		&credential.Flags.UserVerified,
+		&credential.Flags.BackupEligible,
+		&credential.Flags.BackupState,
 		&credential.SignCount,
 		&credential.CloneWarning,
 		&credential.Name,
@@ -221,13 +259,19 @@ func (r *postgresWebAuthnRepository) GetCredentialByID(ctx context.Context, cred
 		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to get credential", err)
 	}
 
-	// Parse transport string back to slice
-	credential.Transport = models.StringToTransports(transportStr)
-	
-	// Parse flags JSON back to struct
-	if err := json.Unmarshal([]byte(flagsJSON), &credential.Flags); err != nil {
-		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to parse flags", err)
+	// Convert transport data back to slice of AuthenticatorTransport
+	if r.db.DriverName() == "postgres" {
+		// PostgreSQL: convert from array
+		credential.Transport = make([]models.AuthenticatorTransport, len(transportStrs))
+		for i, ts := range transportStrs {
+			credential.Transport[i] = models.AuthenticatorTransport(ts)
+		}
+	} else {
+		// SQLite: convert from comma-separated string
+		credential.Transport = models.StringToTransports(transportStr)
 	}
+	
+	// Flags are now read directly from individual columns
 
 	return credential, nil
 }
@@ -239,13 +283,22 @@ func (r *postgresWebAuthnRepository) GetCredentialByTableID(ctx context.Context,
 
 	query := `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, name, last_used_at, created_at, updated_at
+			   transport, user_present, user_verified, backup_eligible, backup_state,
+			   sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE id = $1`
 
 	credential := &models.WebAuthnCredential{}
+	var transportValue interface{}
+	var transportStrs []string
 	var transportStr string
-	var flagsJSON string
+
+	// Prepare transport scanning based on database type
+	if r.db.DriverName() == "postgres" {
+		transportValue = pq.Array(&transportStrs)
+	} else {
+		transportValue = &transportStr
+	}
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&credential.ID,
@@ -253,8 +306,11 @@ func (r *postgresWebAuthnRepository) GetCredentialByTableID(ctx context.Context,
 		&credential.CredentialID,
 		&credential.PublicKey,
 		&credential.AttestationType,
-		&transportStr,
-		&flagsJSON,
+		transportValue,
+		&credential.Flags.UserPresent,
+		&credential.Flags.UserVerified,
+		&credential.Flags.BackupEligible,
+		&credential.Flags.BackupState,
 		&credential.SignCount,
 		&credential.CloneWarning,
 		&credential.Name,
@@ -270,13 +326,19 @@ func (r *postgresWebAuthnRepository) GetCredentialByTableID(ctx context.Context,
 		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to get credential", err)
 	}
 
-	// Parse transport string back to slice
-	credential.Transport = models.StringToTransports(transportStr)
-	
-	// Parse flags JSON back to struct
-	if err := json.Unmarshal([]byte(flagsJSON), &credential.Flags); err != nil {
-		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to parse flags", err)
+	// Convert transport data back to slice of AuthenticatorTransport
+	if r.db.DriverName() == "postgres" {
+		// PostgreSQL: convert from array
+		credential.Transport = make([]models.AuthenticatorTransport, len(transportStrs))
+		for i, ts := range transportStrs {
+			credential.Transport[i] = models.AuthenticatorTransport(ts)
+		}
+	} else {
+		// SQLite: convert from comma-separated string
+		credential.Transport = models.StringToTransports(transportStr)
 	}
+	
+	// Flags are now read directly from individual columns
 
 	return credential, nil
 }
@@ -294,23 +356,33 @@ func (r *postgresWebAuthnRepository) UpdateCredential(ctx context.Context, crede
 	query := `
 		UPDATE webauthn_credentials 
 		SET public_key = $1, attestation_type = $2, transport = $3, 
-			flags = $4, sign_count = $5, clone_warning = $6, name = $7, last_used_at = $8, updated_at = $9
-		WHERE credential_id = $10`
+			user_present = $4, user_verified = $5, backup_eligible = $6, backup_state = $7,
+			sign_count = $8, clone_warning = $9, name = $10, last_used_at = $11, updated_at = $12
+		WHERE credential_id = $13`
 
-	transportStr := models.TransportsToString(credential.Transport)
-	credential.UpdatedAt = time.Now()
-	
-	// Convert flags to JSON for storage
-	flagsJSON, err := json.Marshal(credential.Flags)
-	if err != nil {
-		return NewRepositoryError(ErrRepositoryInternal, "Failed to marshal flags", err)
+	// Convert transport slice for database storage
+	var transportValue interface{}
+	if r.db.DriverName() == "postgres" {
+		// PostgreSQL: use array format
+		transportStrs := make([]string, len(credential.Transport))
+		for i, transport := range credential.Transport {
+			transportStrs[i] = string(transport)
+		}
+		transportValue = pq.Array(transportStrs)
+	} else {
+		// SQLite: use comma-separated string
+		transportValue = models.TransportsToString(credential.Transport)
 	}
+	credential.UpdatedAt = time.Now()
 
 	result, err := r.db.ExecContext(ctx, query,
 		credential.PublicKey,
 		credential.AttestationType,
-		transportStr,
-		string(flagsJSON),
+		transportValue,
+		credential.Flags.UserPresent,
+		credential.Flags.UserVerified,
+		credential.Flags.BackupEligible,
+		credential.Flags.BackupState,
 		credential.SignCount,
 		credential.CloneWarning,
 		credential.Name,
@@ -372,20 +444,38 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserIDWithTransports(ctx co
 		return r.GetCredentialsByUserID(ctx, userID)
 	}
 
-	// Build IN clause for transport filtering
-	transportStrs := make([]string, len(transports))
-	for i, transport := range transports {
-		transportStrs[i] = string(transport)
+	// Build filtering query based on database type
+	var query string
+	var args []interface{}
+	
+	if r.db.DriverName() == "postgres" {
+		// PostgreSQL: use array overlap operator
+		transportStrs := make([]string, len(transports))
+		for i, transport := range transports {
+			transportStrs[i] = string(transport)
+		}
+		query = `
+			SELECT id, user_id, credential_id, public_key, attestation_type,
+				   transport, user_present, user_verified, backup_eligible, backup_state,
+				   sign_count, clone_warning, name, last_used_at, created_at, updated_at
+			FROM webauthn_credentials 
+			WHERE user_id = $1 AND transport && $2
+			ORDER BY created_at DESC`
+		args = []interface{}{userID, pq.Array(transportStrs)}
+	} else {
+		// SQLite: use LIKE for comma-separated string matching
+		// For simplicity, we'll get all credentials and filter in application code
+		query = `
+			SELECT id, user_id, credential_id, public_key, attestation_type,
+				   transport, user_present, user_verified, backup_eligible, backup_state,
+				   sign_count, clone_warning, name, last_used_at, created_at, updated_at
+			FROM webauthn_credentials 
+			WHERE user_id = ?
+			ORDER BY created_at DESC`
+		args = []interface{}{userID}
 	}
 
-	query := `
-		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, created_at, updated_at
-		FROM webauthn_credentials 
-		WHERE user_id = $1 AND transport && $2
-		ORDER BY created_at DESC`
-
-	rows, err := r.db.QueryContext(ctx, query, userID, pq.Array(transportStrs))
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to query credentials", err)
 	}
@@ -394,7 +484,16 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserIDWithTransports(ctx co
 	var credentials []*models.WebAuthnCredential
 	for rows.Next() {
 		credential := &models.WebAuthnCredential{}
+		var transportValue interface{}
+		var transportStrs []string
 		var transportStr string
+		
+		// Prepare transport scanning based on database type
+		if r.db.DriverName() == "postgres" {
+			transportValue = pq.Array(&transportStrs)
+		} else {
+			transportValue = &transportStr
+		}
 		
 		err := rows.Scan(
 			&credential.ID,
@@ -402,10 +501,15 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserIDWithTransports(ctx co
 			&credential.CredentialID,
 			&credential.PublicKey,
 			&credential.AttestationType,
-			&transportStr,
-			&credential.Flags,
+			transportValue,
+			&credential.Flags.UserPresent,
+			&credential.Flags.UserVerified,
+			&credential.Flags.BackupEligible,
+			&credential.Flags.BackupState,
 			&credential.SignCount,
 			&credential.CloneWarning,
+			&credential.Name,
+			&credential.LastUsedAt,
 			&credential.CreatedAt,
 			&credential.UpdatedAt,
 		)
@@ -413,7 +517,35 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserIDWithTransports(ctx co
 			return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to scan credential", err)
 		}
 
-		credential.Transport = models.StringToTransports(transportStr)
+		// Convert transport data back to slice of AuthenticatorTransport
+		if r.db.DriverName() == "postgres" {
+			// PostgreSQL: convert from array
+			credential.Transport = make([]models.AuthenticatorTransport, len(transportStrs))
+			for i, ts := range transportStrs {
+				credential.Transport[i] = models.AuthenticatorTransport(ts)
+			}
+		} else {
+			// SQLite: convert from comma-separated string
+			credential.Transport = models.StringToTransports(transportStr)
+			
+			// For SQLite, we need to filter in application code
+			hasMatchingTransport := false
+			for _, credTransport := range credential.Transport {
+				for _, filterTransport := range transports {
+					if credTransport == filterTransport {
+						hasMatchingTransport = true
+						break
+					}
+				}
+				if hasMatchingTransport {
+					break
+				}
+			}
+			if !hasMatchingTransport {
+				continue // Skip this credential
+			}
+		}
+
 		credentials = append(credentials, credential)
 	}
 
@@ -510,7 +642,8 @@ func (r *postgresWebAuthnRepository) GetCredentialsByTransport(ctx context.Conte
 
 	query := `
 		SELECT id, user_id, credential_id, public_key, attestation_type,
-			   transport, flags, sign_count, clone_warning, created_at, updated_at
+			   transport, user_present, user_verified, backup_eligible, backup_state,
+			   sign_count, clone_warning, name, last_used_at, created_at, updated_at
 		FROM webauthn_credentials 
 		WHERE transport LIKE $1
 		ORDER BY created_at DESC`
@@ -533,9 +666,14 @@ func (r *postgresWebAuthnRepository) GetCredentialsByTransport(ctx context.Conte
 			&credential.PublicKey,
 			&credential.AttestationType,
 			&transportStr,
-			&credential.Flags,
+			&credential.Flags.UserPresent,
+			&credential.Flags.UserVerified,
+			&credential.Flags.BackupEligible,
+			&credential.Flags.BackupState,
 			&credential.SignCount,
 			&credential.CloneWarning,
+			&credential.Name,
+			&credential.LastUsedAt,
 			&credential.CreatedAt,
 			&credential.UpdatedAt,
 		)
@@ -654,16 +792,16 @@ func validateUUID(id string) error {
 		return fmt.Errorf("user ID cannot be empty")
 	}
 	
-	// UUID v4 pattern: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-	// where x is any hexadecimal digit and y is one of 8, 9, a, or b
-	uuidPattern := `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+	// General UUID pattern: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+	// where x is any hexadecimal digit
+	uuidPattern := `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`
 	matched, err := regexp.MatchString(uuidPattern, id)
 	if err != nil {
 		return fmt.Errorf("UUID validation error: %v", err)
 	}
 	
 	if !matched {
-		return fmt.Errorf("invalid UUID v4 format: %s", id)
+		return fmt.Errorf("invalid UUID format: %s", id)
 	}
 	
 	return nil

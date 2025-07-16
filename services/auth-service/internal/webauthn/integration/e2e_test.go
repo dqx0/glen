@@ -224,13 +224,16 @@ func (suite *E2ETestSuite) createTables() error {
 		public_key BLOB NOT NULL,
 		attestation_type TEXT DEFAULT 'none',
 		transport TEXT DEFAULT '',
-		flags TEXT DEFAULT '{}',
 		sign_count INTEGER NOT NULL DEFAULT 0,
 		clone_warning BOOLEAN NOT NULL DEFAULT 0,
 		name TEXT NOT NULL DEFAULT '',
 		last_used_at TIMESTAMP,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		user_present BOOLEAN NOT NULL DEFAULT 0,
+		user_verified BOOLEAN NOT NULL DEFAULT 0,
+		backup_eligible BOOLEAN NOT NULL DEFAULT 0,
+		backup_state BOOLEAN NOT NULL DEFAULT 0,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	)`
 
