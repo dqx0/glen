@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -9,8 +10,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 
-	"github.com/dqx0/glen/auth-service/internal/webauthn/service"
 	"github.com/dqx0/glen/auth-service/internal/webauthn/middleware"
+	"github.com/dqx0/glen/auth-service/internal/webauthn/service"
 )
 
 // RegistrationHandler handles WebAuthn registration endpoints
@@ -43,10 +44,11 @@ func (h *RegistrationHandler) RegisterRoutes(r chi.Router) {
 // StartRegistration handles POST /webauthn/register/start
 func (h *RegistrationHandler) StartRegistration(w http.ResponseWriter, r *http.Request) {
 	var req service.RegistrationStartRequest
-	
+
 	// Parse request body
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body", err.Error())
+		fmt.Printf("Error decoding request body: %v\n", err)
 		return
 	}
 
@@ -54,6 +56,7 @@ func (h *RegistrationHandler) StartRegistration(w http.ResponseWriter, r *http.R
 	userID, ok := middleware.GetUserID(r)
 	if !ok {
 		writeWebAuthnErrorResponse(w, http.StatusUnauthorized, "UNAUTHORIZED", "User not authenticated", "")
+		fmt.Printf("Error: User not authenticated\n")
 		return
 	}
 	req.UserID = userID
@@ -65,6 +68,7 @@ func (h *RegistrationHandler) StartRegistration(w http.ResponseWriter, r *http.R
 	// Validate request
 	if err := h.validator.Struct(&req); err != nil {
 		writeWebAuthnErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation failed", err.Error())
+		fmt.Printf("Validation error: %v\n", err)
 		return
 	}
 
@@ -72,6 +76,7 @@ func (h *RegistrationHandler) StartRegistration(w http.ResponseWriter, r *http.R
 	response, err := h.webAuthnService.BeginRegistration(r.Context(), &req)
 	if err != nil {
 		handleWebAuthnServiceError(w, err)
+		fmt.Printf("Error during registration start: %v\n", err)
 		return
 	}
 
@@ -121,10 +126,10 @@ func (h *RegistrationHandler) FinishRegistration(w http.ResponseWriter, r *http.
 
 	// Create enhanced response
 	response := map[string]interface{}{
-		"success":       result.Success,
-		"credentialId":  result.CredentialID,
-		"warnings":      result.Warnings,
-		"timestamp":     time.Now().Unix(),
+		"success":      result.Success,
+		"credentialId": result.CredentialID,
+		"warnings":     result.Warnings,
+		"timestamp":    time.Now().Unix(),
 	}
 
 	// Write success response
@@ -136,7 +141,7 @@ func (h *RegistrationHandler) FinishRegistration(w http.ResponseWriter, r *http.
 func (h *RegistrationHandler) writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	
+
 	if err := json.NewEncoder(w).Encode(data); err != nil {
 		// If we can't encode the response, log the error and write a generic error
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -149,10 +154,10 @@ func (h *RegistrationHandler) writeErrorResponse(w http.ResponseWriter, statusCo
 		Details: details,
 		Code:    statusCode,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	
+
 	if err := json.NewEncoder(w).Encode(errorResponse); err != nil {
 		// Fallback to plain text error
 		http.Error(w, message, statusCode)
@@ -165,7 +170,7 @@ func (h *RegistrationHandler) handleServiceError(w http.ResponseWriter, err erro
 		h.writeErrorResponse(w, statusCode, serviceErr.Message, serviceErr.Details)
 		return
 	}
-	
+
 	// Generic error handling
 	h.writeErrorResponse(w, http.StatusInternalServerError, "Internal server error", err.Error())
 }
