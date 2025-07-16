@@ -72,18 +72,12 @@ func (m *Migrator) ApplyMigration(ctx context.Context, migration Migration) erro
 	}
 	
 	// Record migration as applied
-	// Try to insert with name column first, fallback to without name column
+	// Production schema has: version, dirty, name
 	_, err = tx.ExecContext(ctx, 
-		"INSERT INTO schema_migrations (version, name, dirty, applied_at) VALUES ($1, $2, $3, $4)",
-		migration.Version, migration.Name, false, time.Now())
+		"INSERT INTO schema_migrations (version, dirty, name) VALUES ($1, $2, $3)",
+		migration.Version, false, migration.Name)
 	if err != nil {
-		// If the insert fails (likely due to missing name column), try without name column
-		_, err = tx.ExecContext(ctx, 
-			"INSERT INTO schema_migrations (version, dirty, applied_at) VALUES ($1, $2, $3)",
-			migration.Version, false, time.Now())
-		if err != nil {
-			return fmt.Errorf("failed to record migration %s: %w", migration.Version, err)
-		}
+		return fmt.Errorf("failed to record migration %s: %w", migration.Version, err)
 	}
 	
 	// Commit transaction
@@ -108,84 +102,24 @@ func (m *Migrator) IsMigrationApplied(ctx context.Context, version string) (bool
 
 // GetAppliedMigrations returns all applied migrations
 func (m *Migrator) GetAppliedMigrations(ctx context.Context) ([]Migration, error) {
-	// Try to query with name column first, fallback to without name column
+	// Production schema has: version, dirty, name
 	rows, err := m.db.QueryContext(ctx, 
-		"SELECT version, COALESCE(name, ''), applied_at FROM schema_migrations ORDER BY applied_at")
-	
+		"SELECT version, name FROM schema_migrations WHERE dirty = false ORDER BY version")
 	if err != nil {
-		// If the query fails (likely due to missing name column), try without name column
-		rows, err = m.db.QueryContext(ctx, 
-			"SELECT version, applied_at FROM schema_migrations ORDER BY applied_at")
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		
-		var migrations []Migration
-		for rows.Next() {
-			var migration Migration
-			var appliedAtStr string
-			err := rows.Scan(&migration.Version, &appliedAtStr)
-			if err != nil {
-				return nil, err
-			}
-			migration.Name = "" // Set default empty name
-			
-			// Parse the time string
-			if appliedAtStr != "" {
-				// Try multiple time formats
-				if t, err := time.Parse(time.RFC3339, appliedAtStr); err == nil {
-					migration.AppliedAt = &t
-				} else if t, err := time.Parse("2006-01-02 15:04:05", appliedAtStr); err == nil {
-					migration.AppliedAt = &t
-				}
-			}
-			
-			migrations = append(migrations, migration)
-		}
-		return migrations, nil
+		return nil, err
 	}
-	
 	defer rows.Close()
 	
 	var migrations []Migration
 	for rows.Next() {
 		var migration Migration
-		var appliedAtStr string
-		err := rows.Scan(&migration.Version, &migration.Name, &appliedAtStr)
+		err := rows.Scan(&migration.Version, &migration.Name)
 		if err != nil {
 			return nil, err
 		}
 		
-		// Parse the time string
-		if appliedAtStr != "" {
-			// Try multiple time formats
-			formats := []string{
-				"2006-01-02 15:04:05",
-				"2006-01-02 15:04:05.000000000",
-				"2006-01-02 15:04:05.000000000+07:00",
-				"2006-01-02 15:04:05.000000000-07:00",
-				"2006-01-02 15:04:05.000000000Z07:00",
-				time.RFC3339,
-				time.RFC3339Nano,
-			}
-			
-			var appliedAt time.Time
-			var parseErr error
-			for _, format := range formats {
-				appliedAt, parseErr = time.Parse(format, appliedAtStr)
-				if parseErr == nil {
-					break
-				}
-			}
-			
-			if parseErr != nil {
-				// If all parsing fails, just use current time as fallback
-				appliedAt = time.Now()
-			}
-			
-			migration.AppliedAt = &appliedAt
-		}
+		// Since production schema doesn't have applied_at, we set it to nil
+		migration.AppliedAt = nil
 		
 		migrations = append(migrations, migration)
 	}
