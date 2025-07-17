@@ -243,6 +243,9 @@ jobs:
             --namespace=glen-system \
             --dry-run=client -o yaml | kubectl apply -f -
           
+          # Clean up any existing failed migration jobs
+          kubectl delete job -n glen-system -l app=glen-db-migrate --ignore-not-found=true
+          
           # Create database migration job
           JOB_NAME="glen-db-migrate-$(date +%s)"
           cat <<EOF | kubectl apply -f -
@@ -251,6 +254,8 @@ jobs:
           metadata:
             name: $JOB_NAME
             namespace: glen-system
+            labels:
+              app: glen-db-migrate
           spec:
             activeDeadlineSeconds: 600
             backoffLimit: 3
@@ -326,14 +331,54 @@ jobs:
                     # Run migrations
                     echo "Running migrations..."
                     DB_URL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=require"
+                    DB_URL_NO_SSL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=disable"
                     echo "Database URL: postgres://\$DB_USER:***@\$DB_HOST:5432/\$DB_NAME?sslmode=require"
                     
-                    if ! migrate -path /migrations -database "\$DB_URL" up; then
-                      echo "Migration failed with SSL required, trying without SSL..."
-                      DB_URL_NO_SSL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=disable"
-                      if ! migrate -path /migrations -database "\$DB_URL_NO_SSL" up; then
-                        echo "Migration failed with both SSL and non-SSL connections"
-                        echo "Database connection is not working properly"
+                    # Function to try migration with both SSL modes
+                    try_migrate() {
+                      local cmd="\$1"
+                      if ! migrate -path /migrations -database "\$DB_URL" \$cmd; then
+                        echo "Migration failed with SSL required, trying without SSL..."
+                        if ! migrate -path /migrations -database "\$DB_URL_NO_SSL" \$cmd; then
+                          return 1
+                        fi
+                      fi
+                      return 0
+                    }
+                    
+                    # Try normal migration first
+                    if ! try_migrate "up"; then
+                      echo "Migration failed, checking for dirty database state..."
+                      
+                      # Check if it's a dirty database error
+                      if try_migrate "version" 2>&1 | grep -q "Dirty database"; then
+                        echo "Detected dirty database state, attempting to fix..."
+                        
+                        # Get the current version
+                        CURRENT_VERSION=\$(try_migrate "version" 2>&1 | grep -o "version [0-9]*" | cut -d' ' -f2)
+                        if [ -n "\$CURRENT_VERSION" ]; then
+                          echo "Current dirty version: \$CURRENT_VERSION"
+                          
+                          # Force the version to clean state
+                          echo "Forcing version \$CURRENT_VERSION to clean state..."
+                          if try_migrate "force \$CURRENT_VERSION"; then
+                            echo "Successfully cleaned dirty state, retrying migration..."
+                            if try_migrate "up"; then
+                              echo "Migration succeeded after fixing dirty state"
+                            else
+                              echo "Migration still failed after fixing dirty state"
+                              exit 1
+                            fi
+                          else
+                            echo "Failed to force clean the database version"
+                            exit 1
+                          fi
+                        else
+                          echo "Could not determine current version"
+                          exit 1
+                        fi
+                      else
+                        echo "Migration failed with unknown error"
                         exit 1
                       fi
                     fi
