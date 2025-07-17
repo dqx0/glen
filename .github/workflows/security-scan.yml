@@ -83,7 +83,7 @@ jobs:
 
       - name: Install gosec
         run: |
-          go install github.com/securecodewarrior/gosec/cmd/gosec@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run gosec security scanner
         run: |
