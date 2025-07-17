@@ -9,7 +9,7 @@ data:
   DB_PORT: "5432"
   DB_NAME: "glen_prod"
   DB_USER: "glen_user"
-  DB_SSLMODE: "require"
+  DB_SSLMODE: "disable"
   
   # Redis Configuration
   REDIS_HOST: "REPLACE_REDIS_HOST"  # Redis IP (要置換)
