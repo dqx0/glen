@@ -57,13 +57,13 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		err := socialRepo.DeleteByUserID(r.Context(), "test-user-id")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to delete: %v", err), http.StatusInternalServerError)
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("test-user-id social accounts deleted"))
 	})
@@ -74,20 +74,20 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		// 実際のGoogleプロバイダーIDで削除
 		account, err := socialRepo.GetByProviderAndProviderID(r.Context(), "google", "102745493108574627406")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Account not found: %v", err), http.StatusNotFound)
 			return
 		}
-		
+
 		err = socialRepo.Delete(r.Context(), account.ID)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to delete: %v", err), http.StatusInternalServerError)
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Google social account deleted"))
 	})
@@ -122,9 +122,6 @@ func connectDB() (*sql.DB, error) {
 			user = "glen_dev"
 		}
 		password := os.Getenv("DB_PASSWORD")
-		if password == "" {
-			password = "glen_dev_pass"
-		}
 		dbname := os.Getenv("DB_NAME")
 		if dbname == "" {
 			dbname = "glen_dev"

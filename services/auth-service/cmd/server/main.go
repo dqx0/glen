@@ -176,9 +176,6 @@ func connectDB() (*sql.DB, error) {
 			user = "glen_dev"
 		}
 		password := os.Getenv("DB_PASSWORD")
-		if password == "" {
-			password = "glen_dev_pass"
-		}
 		dbname := os.Getenv("DB_NAME")
 		if dbname == "" {
 			dbname = "glen_dev"

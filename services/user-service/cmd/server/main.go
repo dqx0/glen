@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	
+
 	"github.com/dqx0/glen/user-service/internal/handlers"
 	"github.com/dqx0/glen/user-service/internal/repository"
 	"github.com/dqx0/glen/user-service/internal/service"
@@ -22,8 +22,6 @@ func main() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 	defer db.Close()
-
-
 
 	// 依存関係の初期化
 	userRepo := repository.NewUserRepository(db)
@@ -49,7 +47,7 @@ func main() {
 		r.Get("/users/{user_id}", userHandler.GetUserByID)
 		r.Get("/users/email/{email}", userHandler.GetUserByEmail)
 		r.Get("/users/me", userHandler.GetMe)
-		
+
 	})
 
 	// ヘルスチェック
@@ -88,9 +86,6 @@ func connectDB() (*sql.DB, error) {
 			user = "glen_dev"
 		}
 		password := os.Getenv("DB_PASSWORD")
-		if password == "" {
-			password = "glen_dev_pass"
-		}
 		dbname := os.Getenv("DB_NAME")
 		if dbname == "" {
 			dbname = "glen_dev"
