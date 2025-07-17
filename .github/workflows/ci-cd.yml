@@ -296,6 +296,7 @@ jobs:
                         echo "Fixing dirty database state..."
                         migrate -path /migrations -database "\$DB_URL_NO_SSL" force 20250716000002
                         migrate -path /migrations -database "\$DB_URL_NO_SSL" up
+
                       else
                         echo "Migration failed with unknown error"
                         exit 1
