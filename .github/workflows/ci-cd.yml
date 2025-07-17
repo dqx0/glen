@@ -331,7 +331,11 @@ jobs:
                     if ! migrate -path /migrations -database "\$DB_URL" up; then
                       echo "Migration failed with SSL required, trying without SSL..."
                       DB_URL_NO_SSL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=disable"
-                      migrate -path /migrations -database "\$DB_URL_NO_SSL" up
+                      if ! migrate -path /migrations -database "\$DB_URL_NO_SSL" up; then
+                        echo "Migration failed with both SSL and non-SSL connections"
+                        echo "Database connection is not working properly"
+                        exit 1
+                      fi
                     fi
                     
                     # Verify tables were created
