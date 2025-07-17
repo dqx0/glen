@@ -384,23 +384,28 @@ jobs:
           # Wait for deployments with better error handling
           SERVICES=("glen-auth-service" "glen-user-service" "glen-social-service" "glen-api-gateway" "glen-frontend")
           
+          # Clean up stuck deployments first
           for service in "${SERVICES[@]}"; do
-            echo "Waiting for $service deployment..."
+            echo "Checking $service deployment..."
             
-            # Try rollout status with longer timeout
-            if kubectl rollout status deployment/$service -n glen-system --timeout=300s; then
+            # Delete any pending pods that might be stuck
+            kubectl delete pods -n glen-system -l app=$service --field-selector=status.phase=Pending --ignore-not-found=true
+            
+            # Force restart to apply new resource limits
+            kubectl rollout restart deployment/$service -n glen-system
+            
+            # Wait with shorter timeout
+            if kubectl rollout status deployment/$service -n glen-system --timeout=180s; then
               echo "$service deployment completed successfully"
             else
-              echo "$service deployment timed out, checking pods..."
+              echo "$service deployment failed, checking status..."
               kubectl get pods -n glen-system -l app=$service
               kubectl describe deployment/$service -n glen-system
               
-              # Force restart if stuck
-              echo "Restarting $service deployment..."
-              kubectl rollout restart deployment/$service -n glen-system
+              # Check if it's a resource issue
+              kubectl describe nodes | grep -A 10 "Allocated resources"
               
-              # Wait for restart
-              kubectl rollout status deployment/$service -n glen-system --timeout=180s || true
+              echo "Continuing with other services..."
             fi
           done
 
