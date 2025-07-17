@@ -186,7 +186,10 @@ func (h *AuthHandler) RevokeToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"message":"token revoked successfully"}`))
+	if _, err := w.Write([]byte(`{"message":"token revoked successfully"}`)); err != nil {
+		// Log error but don't change response status as headers already sent
+		log.Printf("Failed to write response: %v", err)
+	}
 }
 
 // ListTokens はユーザーのトークン一覧を取得する

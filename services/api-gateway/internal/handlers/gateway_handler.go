@@ -208,7 +208,9 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) 
 		response = `{"status":"error"}`
 	}
 	
-	w.Write([]byte(response))
+	if _, err := w.Write([]byte(response)); err != nil {
+		log.Printf("Failed to write response: %v", err)
+	}
 }
 
 // writeErrorResponse はエラーレスポンスを書き込む
@@ -218,7 +220,9 @@ func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	
 	// 簡易的なエラーレスポンス
 	response := `{"success":false,"error":"` + message + `"}`
-	w.Write([]byte(response))
+	if _, err := w.Write([]byte(response)); err != nil {
+		log.Printf("Failed to write error response: %v", err)
+	}
 	
 	// エラーレスポンスのログ
 	log.Printf("[ERROR RESPONSE] Sent %d: %s", statusCode, message)

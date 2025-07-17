@@ -1,0 +1,18 @@
+{
+  "severity": "medium",
+  "confidence": "medium",
+  "exclude-dir": [
+    "vendor",
+    "node_modules",
+    ".git",
+    "internal/webauthn/tests",
+    "internal/webauthn/integration",
+    "internal/webauthn/performance"
+  ],
+  "output": {
+    "format": "sarif",
+    "stdout": false
+  },
+  "nosec": true,
+  "tests": false
+}

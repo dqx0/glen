@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -117,12 +118,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(SuccessResponse{
-		Success: true,
-		User:    userResp,
-	})
+	h.writeCreatedResponse(w, userResp)
 }
 
 // Login はユーザーログインを処理する
@@ -164,12 +160,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(SuccessResponse{
-		Success: true,
-		User:    userResp,
-	})
+	h.writeSuccessResponse(w, userResp)
 }
 
 // GetUser はユーザー情報を取得する
@@ -202,12 +193,7 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(SuccessResponse{
-		Success: true,
-		User:    userResp,
-	})
+	h.writeSuccessResponse(w, userResp)
 }
 
 // GetUserByID handles requests to get a user by their ID
@@ -244,12 +230,7 @@ func (h *UserHandler) GetUserByID(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(SuccessResponse{
-		Success: true,
-		User:    userResp,
-	})
+	h.writeSuccessResponse(w, userResp)
 }
 
 // GetUserByEmail handles requests to get a user by their email address
@@ -286,12 +267,7 @@ func (h *UserHandler) GetUserByEmail(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(SuccessResponse{
-		Success: true,
-		User:    userResp,
-	})
+	h.writeSuccessResponse(w, userResp)
 }
 
 // WebAuthn関連のハンドラー
@@ -346,9 +322,7 @@ func (h *UserHandler) WebAuthnRegisterStart(w http.ResponseWriter, r *http.Reque
 		"attestation": "none",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
 // WebAuthnRegisterFinish handles WebAuthn registration finish requests
@@ -396,9 +370,7 @@ func (h *UserHandler) WebAuthnRegisterFinish(w http.ResponseWriter, r *http.Requ
 		},
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
 // WebAuthnAuthenticateStart handles WebAuthn authentication start requests
@@ -429,9 +401,7 @@ func (h *UserHandler) WebAuthnAuthenticateStart(w http.ResponseWriter, r *http.R
 		"userVerification": "preferred",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
 // WebAuthnAuthenticateFinish handles WebAuthn authentication finish requests
@@ -471,18 +441,14 @@ func (h *UserHandler) WebAuthnAuthenticateFinish(w http.ResponseWriter, r *http.
 		},
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	h.writeJSONResponse(w, http.StatusOK, response)
 }
 
 // GetWebAuthnCredentials handles GET requests for WebAuthn credentials
 func (h *UserHandler) GetWebAuthnCredentials(w http.ResponseWriter, r *http.Request) {
 	// Return empty credentials list for now - this is a minimal implementation
 	// In a full implementation, this would fetch credentials from the database
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	h.writeJSONResponse(w, http.StatusOK, map[string]interface{}{
 		"credentials": []interface{}{},
 	})
 }
@@ -508,10 +474,45 @@ func (h *UserHandler) HandleWebAuthnCredentials(w http.ResponseWriter, r *http.R
 func (h *UserHandler) writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(ErrorResponse{
+	if err := json.NewEncoder(w).Encode(ErrorResponse{
 		Success: false,
 		Error:   message,
-	})
+	}); err != nil {
+		log.Printf("Failed to encode error response: %v", err)
+	}
+}
+
+// writeSuccessResponse はサクセスレスポンスを書き込む
+func (h *UserHandler) writeSuccessResponse(w http.ResponseWriter, user UserResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(SuccessResponse{
+		Success: true,
+		User:    user,
+	}); err != nil {
+		log.Printf("Failed to encode success response: %v", err)
+	}
+}
+
+// writeCreatedResponse はCreatedレスポンスを書き込む
+func (h *UserHandler) writeCreatedResponse(w http.ResponseWriter, user UserResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(SuccessResponse{
+		Success: true,
+		User:    user,
+	}); err != nil {
+		log.Printf("Failed to encode created response: %v", err)
+	}
+}
+
+// writeJSONResponse は汎用的なJSONレスポンスを書き込む
+func (h *UserHandler) writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("Failed to encode JSON response: %v", err)
+	}
 }
 
 // generateChallenge generates a random challenge for WebAuthn
@@ -566,10 +567,5 @@ func (h *UserHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:     user.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(SuccessResponse{
-		Success: true,
-		User:    userResp,
-	})
+	h.writeSuccessResponse(w, userResp)
 }

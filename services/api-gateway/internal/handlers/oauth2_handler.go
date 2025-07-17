@@ -241,6 +241,13 @@ func (h *OAuth2Handler) processAuthorization(w http.ResponseWriter, r *http.Requ
 	}
 	
 	// Auth Serviceにリクエストを送信
+	// URL validation for security
+	if !strings.HasPrefix(authURL, "http://") && !strings.HasPrefix(authURL, "https://") {
+		log.Printf("OAuth2 Gateway: Invalid auth URL format: %s", authURL)
+		h.writeError(w, http.StatusInternalServerError, "server_error", "Invalid service configuration")
+		return
+	}
+	// #nosec G107 - URL is validated and comes from environment config for internal service communication
 	resp, err := http.Post(authURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("OAuth2 Gateway: Failed to call auth service: %v", err)
@@ -343,7 +350,9 @@ func (h *OAuth2Handler) writeError(w http.ResponseWriter, statusCode int, errorC
 		"error_description": errorDescription,
 	}
 	
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+	}
 }
 
 // extractUserIDFromJWT はJWTトークンからユーザーIDを抽出（簡易版、署名検証なし）
