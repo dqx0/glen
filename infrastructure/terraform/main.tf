@@ -50,10 +50,6 @@ resource "google_sql_database_instance" "glen_postgres" {
     
     ip_configuration {
       ipv4_enabled = true
-      authorized_networks {
-        value = "0.0.0.0/0"
-        name  = "all"
-      }
     }
     
     database_flags {
