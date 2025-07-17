@@ -63,6 +63,7 @@ secrets/
 *.crt
 .env.secrets
 terraform.tfvars
+configmap.yaml
 k8s-secrets.yaml
 secret.yaml
 

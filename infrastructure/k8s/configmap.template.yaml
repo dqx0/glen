@@ -32,3 +32,10 @@ data:
   # Environment
   ENV: "production"
   LOG_LEVEL: "INFO"
+  
+  # WebAuthn Configuration
+  WEBAUTHN_RP_DISPLAY_NAME: "Glen Authentication System"
+  WEBAUTHN_RP_ID: "glen.dqx0.com"
+  WEBAUTHN_RP_ORIGINS: "https://glen.dqx0.com"
+  WEBAUTHN_TIMEOUT: "60000"
+  WEBAUTHN_DEBUG: "false"

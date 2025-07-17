@@ -101,6 +101,32 @@ spec:
             configMapKeyRef:
               name: glen-config
               key: LOG_LEVEL
+        # WebAuthn Configuration
+        - name: WEBAUTHN_RP_DISPLAY_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: WEBAUTHN_RP_DISPLAY_NAME
+        - name: WEBAUTHN_RP_ID
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: WEBAUTHN_RP_ID
+        - name: WEBAUTHN_RP_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: WEBAUTHN_RP_ORIGINS
+        - name: WEBAUTHN_TIMEOUT
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: WEBAUTHN_TIMEOUT
+        - name: WEBAUTHN_DEBUG
+          valueFrom:
+            configMapKeyRef:
+              name: glen-config
+              key: WEBAUTHN_DEBUG
         livenessProbe:
           httpGet:
             path: /health
