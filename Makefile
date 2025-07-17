@@ -17,40 +17,6 @@ test-integration:
 	cd services/auth-service && go test -v -tags=integration ./...
 	cd services/user-service && go test -v -tags=integration ./...
 
-test-e2e:
-	@echo "🧪 Running E2E tests..."
-	@echo "🐳 Building test images..."
-	@$(MAKE) docker-build
-	@echo "🚀 Starting test environment..."
-	docker-compose -f infrastructure/docker/docker-compose.test.yml up -d
-	@echo "⏳ Waiting for services to be ready..."
-	@sleep 15
-	@echo "🧪 Running E2E test suite..."
-	cd tests/e2e && go test -v ./...
-	@echo "🛑 Stopping test environment..."
-	docker-compose -f infrastructure/docker/docker-compose.test.yml down
-	@echo "✅ E2E tests completed"
-
-test-e2e-up:
-	@echo "🚀 Starting E2E test environment (persistent)..."
-	@$(MAKE) docker-build
-	docker-compose -f infrastructure/docker/docker-compose.test.yml up -d
-	@echo "⏳ Waiting for services to be ready..."
-	@sleep 15
-	@echo "✅ E2E environment ready!"
-	@echo "📍 API Gateway: http://localhost:8080"
-	@echo "🧪 Run tests: cd tests/e2e && go test -v ./..."
-	@echo "🛑 Stop environment: make test-e2e-down"
-
-test-e2e-down:
-	@echo "🛑 Stopping E2E test environment..."
-	docker-compose -f infrastructure/docker/docker-compose.test.yml down
-	@echo "✅ E2E environment stopped"
-
-test-e2e-logs:
-	@echo "📄 Showing E2E test environment logs..."
-	docker-compose -f infrastructure/docker/docker-compose.test.yml logs -f
-
 test-coverage:
 	@echo "Running tests with coverage..."
 	cd services/auth-service && go test -v -coverprofile=coverage.out ./...
