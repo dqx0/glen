@@ -269,7 +269,7 @@ jobs:
                     echo "Time: \$(date)"
                     
                     # Install postgresql client for debugging
-                    apk add --no-cache postgresql-client
+                    apk update && apk add --no-cache postgresql15-client
                     
                     # Test database connection using psql first
                     RETRIES=0
