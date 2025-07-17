@@ -278,15 +278,14 @@ func TestSessionData(t *testing.T) {
 			errorMsg:    "Challenge must be at least 32 bytes",
 		},
 		{
-			name: "Missing_UserID",
+			name: "Passwordless_Authentication_Empty_UserID",
 			sessionData: SessionData{
 				ID:          "550e8400-e29b-41d4-a716-446655440000",
 				Challenge:   []byte("test-challenge-data-12345678901234567890"),
 				ExpiresAt:   time.Now().Add(5 * time.Minute),
 				UserVerification: UserVerificationRequired,
 			},
-			expectError: true,
-			errorMsg:    "UserID is required",
+			expectError: false, // Empty UserID is now valid for passwordless authentication
 		},
 		{
 			name: "Invalid_UserID_Format",

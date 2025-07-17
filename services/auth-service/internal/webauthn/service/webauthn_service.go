@@ -818,7 +818,16 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 	}
 
 	// Get user credentials
-	credentials, err := s.credRepo.GetCredentialsByUserID(ctx, sessionData.UserID)
+	var credentials []*models.WebAuthnCredential
+	
+	if sessionData.UserID != "" {
+		// User-specific authentication
+		credentials, err = s.credRepo.GetCredentialsByUserID(ctx, sessionData.UserID)
+	} else {
+		// Passwordless authentication - get all credentials to allow userHandle-based lookup
+		credentials, err = s.credRepo.GetAllCredentials(ctx)
+	}
+	
 	if err != nil {
 		return &AuthenticationResult{
 			Success: false,
@@ -832,9 +841,20 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 		webauthnCreds[i] = s.convertToWebAuthnCredential(cred)
 	}
 
+	// For passwordless authentication, we need to determine the user dynamically
+	// For now, create a placeholder user that will be updated after credential verification
+	var userID string
+	if sessionData.UserID != "" {
+		userID = sessionData.UserID
+	} else {
+		// For passwordless authentication, we'll determine the user after credential verification
+		// Use a placeholder for now
+		userID = "placeholder"
+	}
+
 	// Create user adapter
 	user := &userAdapter{
-		userID:      []byte(sessionData.UserID),
+		userID:      []byte(userID),
 		username:    "user", // This should be retrieved from user service
 		displayName: "user",
 		credentials: webauthnCreds,
@@ -897,6 +917,11 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 		}, nil
 	}
 
+	// For passwordless authentication, update the userID with the actual user from the credential
+	if sessionData.UserID == "" {
+		userID = dbCredential.UserID
+	}
+
 	// Validate credential usage for security
 	// Skip validation if authenticator sign count is not increasing meaningfully
 	// Many platform authenticators don't implement proper sign count incrementing
@@ -948,7 +973,7 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 			// Don't fail authentication for update error, but log warning
 			return &AuthenticationResult{
 				Success:            true,
-				UserID:             sessionData.UserID,
+				UserID:             userID,
 				CredentialID:       string(credential.ID),
 				SignCount:          dbCredential.SignCount,
 				AuthenticationTime: time.Now(),
@@ -973,7 +998,7 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 
 	return &AuthenticationResult{
 		Success:            true,
-		UserID:             sessionData.UserID,
+		UserID:             userID,
 		CredentialID:       string(credential.ID),
 		SignCount:          dbCredential.SignCount,
 		AuthenticationTime: time.Now(),

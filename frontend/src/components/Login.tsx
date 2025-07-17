@@ -169,7 +169,6 @@ const Login: React.FC = () => {
 
         {/* WebAuthn認証 */}
         <WebAuthnSection 
-          username={username}
           onError={(error) => {
             console.error('WebAuthn error:', error);
           }}

@@ -4,8 +4,6 @@ import type { AuthenticationFinishResponse } from '../types/webauthn';
 import { FingerPrintIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 interface WebAuthnLoginButtonProps {
-  username?: string;
-  passwordless?: boolean;
   onSuccess?: (response: AuthenticationFinishResponse) => void;
   onError?: (error: string) => void;
   disabled?: boolean;
@@ -13,8 +11,6 @@ interface WebAuthnLoginButtonProps {
 }
 
 const WebAuthnLoginButton: React.FC<WebAuthnLoginButtonProps> = ({
-  username,
-  passwordless = false,
   onSuccess,
   onError,
   disabled = false,
@@ -29,19 +25,11 @@ const WebAuthnLoginButton: React.FC<WebAuthnLoginButtonProps> = ({
       return;
     }
 
-    // パスワードレス認証でない場合はユーザー名が必要
-    if (!passwordless && (!username || !username.trim())) {
-      onError?.('ユーザー名を入力してください');
-      return;
-    }
-
     try {
       setIsAuthenticating(true);
       
-      // パスワードレス認証またはユーザー名指定認証
-      const response = passwordless 
-        ? await WebAuthnService.authenticateWithoutUsername()
-        : await WebAuthnService.authenticateCredential(username!.trim());
+      // パスワードレス認証のみ
+      const response = await WebAuthnService.authenticateWithoutUsername();
       
       onSuccess?.(response);
       
@@ -79,7 +67,7 @@ const WebAuthnLoginButton: React.FC<WebAuthnLoginButtonProps> = ({
   return (
     <button
       onClick={handleAuthenticate}
-      disabled={disabled || isAuthenticating || (!passwordless && (!username || !username.trim()))}
+      disabled={disabled || isAuthenticating}
       className={`
         w-full flex items-center justify-center px-4 py-3 border border-transparent 
         text-sm font-medium rounded-lg focus:outline-none focus:ring-2 
@@ -88,7 +76,7 @@ const WebAuthnLoginButton: React.FC<WebAuthnLoginButtonProps> = ({
         ${className}
       `}
       style={{
-        backgroundColor: passwordless ? '#059669' : '#8b5cf6',
+        backgroundColor: '#059669',
         color: 'white'
       }}
     >
@@ -100,7 +88,7 @@ const WebAuthnLoginButton: React.FC<WebAuthnLoginButtonProps> = ({
       {isAuthenticating ? (
         <span>認証中...</span>
       ) : (
-        <span>{passwordless ? 'パスワードレスログイン' : 'WebAuthnでログイン'}</span>
+        <span>パスワードレスログイン</span>
       )}
     </button>
   );

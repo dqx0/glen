@@ -94,13 +94,16 @@ func TestAuthenticationHandler_StartAuthentication(t *testing.T) {
 			expectError:    true,
 		},
 		{
-			name: "Missing_Required_Fields",
+			name: "Passwordless_Authentication_Request",
 			requestBody: &service.AuthenticationStartRequest{
-				// Missing UserID and Username
+				// Empty UserID and UserIdentifier for passwordless authentication
 			},
-			setupMock:      func(m *mockWebAuthnService) {},
-			expectedStatus: http.StatusBadRequest,
-			expectError:    true,
+			setupMock: func(m *mockWebAuthnService) {
+				m.On("BeginAuthentication", mock.Anything, mock.AnythingOfType("*service.AuthenticationStartRequest")).
+					Return(createTestAuthenticationStartResponse(), nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectError:    false,
 		},
 		{
 			name:        "Service_Error",

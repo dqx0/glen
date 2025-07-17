@@ -6,13 +6,11 @@ import WebAuthnLoginButton from './WebAuthnLoginButton';
 import type { AuthenticationFinishResponse } from '../types/webauthn';
 
 interface WebAuthnSectionProps {
-  username: string;
   onError?: (error: string) => void;
   disabled?: boolean;
 }
 
 const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
-  username,
   onError,
   disabled = false,
 }) => {
@@ -97,24 +95,13 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
         }}></div>
       </div>
 
-      <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {/* パスワードレス認証ボタン */}
+      <div style={{ marginBottom: '1rem' }}>
+        {/* パスワードレス認証ボタンのみ */}
         <WebAuthnLoginButton
-          passwordless={true}
           onSuccess={handleWebAuthnSuccess}
           onError={handleWebAuthnError}
           disabled={disabled}
         />
-        
-        {/* ユーザー名指定認証ボタン */}
-        {username.trim() && (
-          <WebAuthnLoginButton
-            username={username}
-            onSuccess={handleWebAuthnSuccess}
-            onError={handleWebAuthnError}
-            disabled={disabled}
-          />
-        )}
       </div>
 
       {isPlatformSupported && (

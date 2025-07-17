@@ -234,27 +234,33 @@ func getEnvOrDefault(key, defaultValue string) string {
 }
 
 func getWebAuthnConfig() *config.WebAuthnConfig {
-	env := getEnvOrDefault("ENV", "production")
+	// 環境変数から設定を読み込み、存在しない場合は環境に応じたデフォルト値を使用
+	webAuthnConfig, err := config.LoadFromEnv()
+	if err != nil {
+		log.Printf("Warning: Failed to load WebAuthn config from env: %v", err)
 
-	if env == "production" {
-		// 本番環境設定
-		return &config.WebAuthnConfig{
-			RPDisplayName: "Glen Authentication System",
-			RPID:          "glen.dqx0.com",
-			RPOrigins:     []string{"https://glen.dqx0.com", "https://api.glen.dqx0.com"},
-			RPIcon:        "",
-			Timeout:       60000, // 60 seconds
-			Debug:         false,
-		}
-	} else {
-		// 開発環境設定
-		return &config.WebAuthnConfig{
-			RPDisplayName: "Glen Authentication System",
-			RPID:          "localhost",
-			RPOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
-			RPIcon:        "",
-			Timeout:       60000, // 60 seconds
-			Debug:         true,
+		// フォールバック: 環境に応じたデフォルト設定
+		env := getEnvOrDefault("ENV", "production")
+		if env == "production" {
+			return &config.WebAuthnConfig{
+				RPDisplayName: "Glen Authentication System",
+				RPID:          "glen.dqx0.com",
+				RPOrigins:     []string{"https://glen.dqx0.com", "https://api.glen.dqx0.com"},
+				RPIcon:        "",
+				Timeout:       60000,
+				Debug:         false,
+			}
+		} else {
+			return &config.WebAuthnConfig{
+				RPDisplayName: "Glen Authentication System",
+				RPID:          "localhost",
+				RPOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
+				RPIcon:        "",
+				Timeout:       60000,
+				Debug:         true,
+			}
 		}
 	}
+
+	return webAuthnConfig
 }

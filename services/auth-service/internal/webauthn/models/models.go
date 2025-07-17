@@ -148,13 +148,12 @@ func (s *SessionData) Validate() error {
 		return errors.New("Challenge must be at least 32 bytes")
 	}
 
-	if s.UserID == "" {
-		return errors.New("UserID is required")
-	}
-
-	// Validate UUID format
-	if _, err := uuid.Parse(s.UserID); err != nil {
-		return errors.New("UserID must be a valid UUID")
+	// For passwordless authentication, UserID can be empty
+	if s.UserID != "" {
+		// Validate UUID format only if UserID is provided
+		if _, err := uuid.Parse(s.UserID); err != nil {
+			return errors.New("UserID must be a valid UUID")
+		}
 	}
 
 	// Use ExpiresAt, but fallback to Expires for backwards compatibility

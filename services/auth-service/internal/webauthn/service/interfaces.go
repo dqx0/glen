@@ -145,8 +145,8 @@ type RegistrationResult struct {
 
 // AuthenticationStartRequest represents a request to start WebAuthn authentication
 type AuthenticationStartRequest struct {
-	UserID            string                     `json:"user_id,omitempty" validate:"required_without=UserIdentifier"`
-	UserIdentifier    string                     `json:"user_identifier,omitempty" validate:"required_without=UserID"`
+	UserID            string                     `json:"user_id,omitempty"`
+	UserIdentifier    string                     `json:"user_identifier,omitempty"`
 	
 	// Authentication options
 	Options           *AuthenticationOptions     `json:"options,omitempty"`
