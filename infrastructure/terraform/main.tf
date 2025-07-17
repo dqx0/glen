@@ -27,8 +27,42 @@ resource "google_compute_subnetwork" "glen_subnet" {
   network       = google_compute_network.glen_network.id
 }
 
+# Enable required APIs
+resource "google_project_service" "sqladmin" {
+  project = var.project_id
+  service = "sqladmin.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "servicenetworking" {
+  project = var.project_id
+  service = "servicenetworking.googleapis.com"
+  disable_on_destroy = false
+}
+
+# Private IP address range for service networking
+resource "google_compute_global_address" "private_ip_address" {
+  name          = "private-ip-address"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.glen_network.id
+}
+
+# Service networking connection
+resource "google_service_networking_connection" "private_vpc_connection" {
+  network                 = google_compute_network.glen_network.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
+  depends_on             = [google_project_service.servicenetworking]
+}
+
 # Cloud SQL インスタンス
 resource "google_sql_database_instance" "glen_postgres" {
+  depends_on = [
+    google_project_service.sqladmin,
+    google_service_networking_connection.private_vpc_connection
+  ]
   name             = "glen-postgres"
   database_version = "POSTGRES_15"
   region           = var.region
@@ -49,11 +83,10 @@ resource "google_sql_database_instance" "glen_postgres" {
     }
     
     ip_configuration {
-      ipv4_enabled = true
-      authorized_networks {
-        value = "0.0.0.0/0"
-        name  = "all"
-      }
+      ipv4_enabled                                  = true
+      private_network                               = google_compute_network.glen_network.id
+      enable_private_path_for_google_cloud_services = true
+      require_ssl                                   = true
     }
     
     database_flags {
