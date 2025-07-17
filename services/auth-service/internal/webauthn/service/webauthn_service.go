@@ -816,6 +816,9 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 			Error:   NewServiceErrorWithCause(ErrServiceInternal, "Failed to deserialize WebAuthn session", "", err),
 		}, nil
 	}
+	
+	fmt.Printf("DEBUG: WebAuthn session UserID: %s\n", string(webauthnSession.UserID))
+	fmt.Printf("DEBUG: WebAuthn session Challenge: %x\n", webauthnSession.Challenge)
 
 	// Get user credentials
 	var credentials []*models.WebAuthnCredential
@@ -841,23 +844,67 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 		webauthnCreds[i] = s.convertToWebAuthnCredential(cred)
 	}
 
-	// For passwordless authentication, we need to determine the user dynamically
-	// For now, create a placeholder user that will be updated after credential verification
+	// For passwordless authentication, determine user from userHandle in the assertion response
 	var userID string
+	var actualUserCredentials []webauthn.Credential
+	
 	if sessionData.UserID != "" {
+		// User-specific authentication
 		userID = sessionData.UserID
+		actualUserCredentials = webauthnCreds
 	} else {
-		// For passwordless authentication, we'll determine the user after credential verification
-		// Use a placeholder for now
-		userID = "placeholder"
+		// Passwordless authentication - extract userHandle to determine the user
+		fmt.Printf("DEBUG: Passwordless authentication - UserHandle length: %d\n", len(req.AssertionResponse.Response.UserHandle))
+		if req.AssertionResponse.Response.UserHandle != nil && len(req.AssertionResponse.Response.UserHandle) > 0 {
+			userID = string(req.AssertionResponse.Response.UserHandle)
+			fmt.Printf("DEBUG: UserHandle as string: %s\n", userID)
+			
+			// Filter credentials to only include those for this user
+			for _, cred := range credentials {
+				if cred.UserID == userID {
+					actualUserCredentials = append(actualUserCredentials, s.convertToWebAuthnCredential(cred))
+					fmt.Printf("DEBUG: Found matching credential for user %s\n", userID)
+				}
+			}
+		} else {
+			// Fallback: try to determine user from the credential ID
+			fmt.Printf("DEBUG: No userHandle, trying credential ID fallback\n")
+			credentialID := req.AssertionResponse.RawID
+			fmt.Printf("DEBUG: Looking for credential ID: %x\n", credentialID)
+			for _, cred := range credentials {
+				fmt.Printf("DEBUG: Checking credential ID: %x\n", cred.CredentialID)
+				if string(cred.CredentialID) == string(credentialID) {
+					userID = cred.UserID
+					actualUserCredentials = append(actualUserCredentials, s.convertToWebAuthnCredential(cred))
+					fmt.Printf("DEBUG: Found user via credential ID: %s\n", userID)
+					break
+				}
+			}
+		}
+		
+		// If we still can't determine the user, use a placeholder approach
+		if userID == "" {
+			fmt.Printf("DEBUG: Could not determine user, using unknown placeholder\n")
+			userID = "unknown"
+			actualUserCredentials = webauthnCreds
+		}
+		
+		fmt.Printf("DEBUG: Total available credentials: %d\n", len(credentials))
+		fmt.Printf("DEBUG: Filtered credentials for user: %d\n", len(actualUserCredentials))
 	}
 
-	// Create user adapter
+	// For passwordless authentication, update the WebAuthn session UserID with the determined user
+	if sessionData.UserID == "" && userID != "" && userID != "unknown" {
+		fmt.Printf("DEBUG: Updating WebAuthn session UserID from empty to: %s\n", userID)
+		webauthnSession.UserID = []byte(userID)
+	}
+
+	// Create user adapter with the determined user ID and filtered credentials
 	user := &userAdapter{
 		userID:      []byte(userID),
 		username:    "user", // This should be retrieved from user service
 		displayName: "user",
-		credentials: webauthnCreds,
+		credentials: actualUserCredentials,
 	}
 
 	// Parse the credential request response directly using protocol package
@@ -890,10 +937,12 @@ func (s *webAuthnService) FinishAuthentication(ctx context.Context, req *Authent
 	
 	// Verify the credential assertion response  
 	fmt.Printf("DEBUG: Validating WebAuthn login...\n")
+	fmt.Printf("DEBUG: User adapter WebAuthnID: %s\n", string(user.WebAuthnID()))
+	fmt.Printf("DEBUG: User adapter credentials count: %d\n", len(user.WebAuthnCredentials()))
 	credential, err := s.webAuthn.ValidateLogin(user, webauthnSession, parsedResponse)
 	if err != nil {
 		fmt.Printf("ERROR: WebAuthn validation failed: %v\n", err)
-		fmt.Printf("DEBUG: User ID: %s, Credential count: %d\n", sessionData.UserID, len(webauthnCreds))
+		fmt.Printf("DEBUG: Determined User ID: %s, User adapter credentials count: %d\n", userID, len(actualUserCredentials))
 		return &AuthenticationResult{
 			Success: false,
 			Error:   NewServiceErrorWithCause(ErrServiceAuthentication, "Authentication verification failed", err.Error(), err),
