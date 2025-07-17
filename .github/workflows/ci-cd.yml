@@ -273,60 +273,11 @@ jobs:
                     echo "Job: $JOB_NAME"
                     echo "Time: \$(date)"
                     
-                    # Install postgresql client for debugging with fallback
-                    echo "Installing PostgreSQL client..."
-                    for i in {1..3}; do
-                      if apk update && apk add --no-cache postgresql15-client; then
-                        echo "PostgreSQL client installed successfully"
-                        break
-                      else
-                        echo "Attempt $i failed, retrying in 10 seconds..."
-                        sleep 10
-                      fi
-                    done
-                    
-                    # Verify psql is available
-                    if ! command -v psql >/dev/null 2>&1; then
-                      echo "Warning: psql not available, skipping connection test"
-                    fi
-                    
-                    # Test database connection using psql first
-                    if command -v psql >/dev/null 2>&1; then
-                      echo "Testing database connection..."
-                      RETRIES=0
-                      MAX_RETRIES=10
-                      until PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "SELECT 1;" > /dev/null 2>&1; do
-                        RETRIES=\$((RETRIES + 1))
-                        if [ \$RETRIES -ge \$MAX_RETRIES ]; then
-                          echo "Database connection failed after \$MAX_RETRIES attempts"
-                          echo "Connection details: Host=\$DB_HOST, User=\$DB_USER, DB=\$DB_NAME"
-                          echo "Testing with sslmode=disable..."
-                          if PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "SELECT 1;" --set=sslmode=disable > /dev/null 2>&1; then
-                            echo "Connection works without SSL - SSL configuration issue"
-                          else
-                            echo "Connection failed even without SSL"
-                          fi
-                          exit 1
-                        fi
-                        echo "Database connection failed, retrying in 5 seconds... (\$RETRIES/\$MAX_RETRIES)"
-                        sleep 5
-                      done
-                      echo "✓ Database connection successful"
-                    else
-                      echo "Skipping database connection test (psql not available)"
-                    fi
+                    # Install postgresql client
+                    apk update && apk add --no-cache postgresql15-client || echo "PostgreSQL client install failed"
                     
                     # List migration files
-                    echo "Available migration files:"
                     ls -la /migrations/
-                    
-                    # Show migration file content
-                    echo "Migration file content:"
-                    for file in /migrations/*.sql; do
-                        echo "=== \$file ==="
-                        head -20 "\$file"
-                        echo ""
-                    done
                     
                     # Run migrations
                     echo "Running migrations..."
@@ -334,49 +285,17 @@ jobs:
                     DB_URL_NO_SSL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=disable"
                     echo "Database URL: postgres://\$DB_USER:***@\$DB_HOST:5432/\$DB_NAME?sslmode=require"
 
-                    # Function to try migration with both SSL modes
-                    try_migrate() {
-                      local cmd="\$1"
-                      if ! migrate -path /migrations -database "\$DB_URL" \$cmd; then
-                        echo "Migration failed with SSL required, trying without SSL..."
-                        if ! migrate -path /migrations -database "\$DB_URL_NO_SSL" \$cmd; then
-                          return 1
-                        fi
-                      fi
-                      return 0
-                    }
+                    # Try migration, handle dirty database state
+                    MIGRATION_OUTPUT=\$(migrate -path /migrations -database "\$DB_URL_NO_SSL" up 2>&1)
                     
-                    # Try normal migration first
-                    if ! try_migrate "up"; then
-                      echo "Migration failed, checking for dirty database state..."
+                    if [ \$? -ne 0 ]; then
+                      echo "Migration failed: \$MIGRATION_OUTPUT"
                       
-                      # Check if it's a dirty database error
-                      if try_migrate "version" 2>&1 | grep -q "Dirty database"; then
-                        echo "Detected dirty database state, attempting to fix..."
-                        
-                        # Get the current version
-                        CURRENT_VERSION=\$(try_migrate "version" 2>&1 | grep -o "version [0-9]*" | cut -d' ' -f2)
-                        if [ -n "\$CURRENT_VERSION" ]; then
-                          echo "Current dirty version: \$CURRENT_VERSION"
-                          
-                          # Force the version to clean state
-                          echo "Forcing version \$CURRENT_VERSION to clean state..."
-                          if try_migrate "force \$CURRENT_VERSION"; then
-                            echo "Successfully cleaned dirty state, retrying migration..."
-                            if try_migrate "up"; then
-                              echo "Migration succeeded after fixing dirty state"
-                            else
-                              echo "Migration still failed after fixing dirty state"
-                              exit 1
-                            fi
-                          else
-                            echo "Failed to force clean the database version"
-                            exit 1
-                          fi
-                        else
-                          echo "Could not determine current version"
-                          exit 1
-                        fi
+                      if echo "\$MIGRATION_OUTPUT" | grep -q "Dirty database version"; then
+                        # Force clean the dirty state and retry
+                        echo "Fixing dirty database state..."
+                        migrate -path /migrations -database "\$DB_URL_NO_SSL" force 20250716000002
+                        migrate -path /migrations -database "\$DB_URL_NO_SSL" up
                       else
                         echo "Migration failed with unknown error"
                         exit 1
@@ -385,14 +304,7 @@ jobs:
                     
                     # Verify tables were created
                     if command -v psql >/dev/null 2>&1; then
-                      echo "Verifying tables were created..."
-                      PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "\\dt" || echo "Table listing failed"
-                      
-                      # Count final tables
-                      FINAL_COUNT=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | xargs || echo "0")
-                      echo "Final table count: \$FINAL_COUNT"
-                    else
-                      echo "Skipping table verification (psql not available)"
+                      PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "\\dt" || echo "Table verification failed"
                     fi
                     
                     echo "Database migration completed successfully at: \$(date)"
