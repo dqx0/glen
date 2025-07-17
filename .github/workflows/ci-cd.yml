@@ -388,22 +388,27 @@ jobs:
           for service in "${SERVICES[@]}"; do
             echo "Checking $service deployment..."
             
-            # Delete any pending pods that might be stuck
-            kubectl delete pods -n glen-system -l app=$service --field-selector=status.phase=Pending --ignore-not-found=true
+            # Delete ALL pods for this service to force recreation
+            kubectl delete pods -n glen-system -l app=$service --grace-period=0 --force --ignore-not-found=true
+            
+            # Wait a moment for pods to be deleted
+            sleep 5
             
             # Force restart to apply new resource limits
             kubectl rollout restart deployment/$service -n glen-system
             
             # Wait with shorter timeout
-            if kubectl rollout status deployment/$service -n glen-system --timeout=180s; then
+            if kubectl rollout status deployment/$service -n glen-system --timeout=120s; then
               echo "$service deployment completed successfully"
             else
               echo "$service deployment failed, checking status..."
               kubectl get pods -n glen-system -l app=$service
               kubectl describe deployment/$service -n glen-system
               
-              # Check if it's a resource issue
-              kubectl describe nodes | grep -A 10 "Allocated resources"
+              # Try to scale down and up to force recreation
+              kubectl scale deployment/$service -n glen-system --replicas=0
+              sleep 5
+              kubectl scale deployment/$service -n glen-system --replicas=1
               
               echo "Continuing with other services..."
             fi
