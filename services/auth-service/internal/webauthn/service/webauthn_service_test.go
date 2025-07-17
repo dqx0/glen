@@ -90,6 +90,14 @@ func (m *mockCredRepository) DeleteCredential(ctx context.Context, credentialID 
 	return nil
 }
 
+func (m *mockCredRepository) GetAllCredentials(ctx context.Context) ([]*models.WebAuthnCredential, error) {
+	var credentials []*models.WebAuthnCredential
+	for _, cred := range m.credentials {
+		credentials = append(credentials, cred)
+	}
+	return credentials, nil
+}
+
 func (m *mockCredRepository) GetCredentialsByUserIDWithTransports(ctx context.Context, userID string, transports []models.AuthenticatorTransport) ([]*models.WebAuthnCredential, error) {
 	return m.GetCredentialsByUserID(ctx, userID)
 }

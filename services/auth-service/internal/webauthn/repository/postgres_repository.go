@@ -204,6 +204,67 @@ func (r *postgresWebAuthnRepository) GetCredentialsByUserID(ctx context.Context,
 	return credentials, nil
 }
 
+// GetAllCredentials retrieves all WebAuthn credentials (for passwordless authentication)
+func (r *postgresWebAuthnRepository) GetAllCredentials(ctx context.Context) ([]*models.WebAuthnCredential, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+
+	query := `
+		SELECT id, user_id, credential_id, public_key, attestation_type,
+			   transport, user_present, user_verified, backup_eligible, backup_state,
+			   sign_count, clone_warning, name, last_used_at, created_at, updated_at
+		FROM webauthn_credentials 
+		ORDER BY created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to query all credentials", err)
+	}
+	defer rows.Close()
+
+	var credentials []*models.WebAuthnCredential
+	for rows.Next() {
+		credential := &models.WebAuthnCredential{}
+		var transportArray pq.StringArray
+
+		err := rows.Scan(
+			&credential.ID,
+			&credential.UserID,
+			&credential.CredentialID,
+			&credential.PublicKey,
+			&credential.AttestationType,
+			&transportArray,
+			&credential.Flags.UserPresent,
+			&credential.Flags.UserVerified,
+			&credential.Flags.BackupEligible,
+			&credential.Flags.BackupState,
+			&credential.SignCount,
+			&credential.CloneWarning,
+			&credential.Name,
+			&credential.LastUsedAt,
+			&credential.CreatedAt,
+			&credential.UpdatedAt,
+		)
+		if err != nil {
+			return nil, NewRepositoryError(ErrRepositoryInternal, "Failed to scan credential", err)
+		}
+
+		// Convert transport array
+		credential.Transport = make([]models.AuthenticatorTransport, len(transportArray))
+		for i, transport := range transportArray {
+			credential.Transport[i] = models.AuthenticatorTransport(transport)
+		}
+
+		credentials = append(credentials, credential)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, NewRepositoryError(ErrRepositoryInternal, "Row iteration error", err)
+	}
+
+	return credentials, nil
+}
+
 // GetCredentialByID retrieves a credential by its ID
 func (r *postgresWebAuthnRepository) GetCredentialByID(ctx context.Context, credentialID []byte) (*models.WebAuthnCredential, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)

@@ -150,17 +150,23 @@ export class WebAuthnService {
   }
 
   // WebAuthn認証フロー実行
-  static async authenticateCredential(username: string): Promise<AuthenticationFinishResponse> {
+  static async authenticateCredential(username?: string): Promise<AuthenticationFinishResponse> {
     if (!this.isSupported()) {
       throw new Error('WebAuthnはこのブラウザでサポートされていません');
     }
 
     try {
       // 1. 認証開始 - サーバーからチャレンジとオプションを取得
-      const startResponse = await this.startAuthentication({
-        user_identifier: username,
+      const startRequest: AuthenticationStartRequest = {
         user_verification: 'preferred',
-      });
+      };
+      
+      // ユーザー名が指定されている場合のみuser_identifierを設定
+      if (username) {
+        startRequest.user_identifier = username;
+      }
+      
+      const startResponse = await this.startAuthentication(startRequest);
 
       // 2. ブラウザAPIで認証オプションを変換
       const options = this.convertAuthenticationOptions(startResponse);
@@ -190,6 +196,11 @@ export class WebAuthnService {
       console.error('WebAuthn authentication failed:', error);
       throw this.handleWebAuthnError(error);
     }
+  }
+
+  // パスワードレス認証専用メソッド
+  static async authenticateWithoutUsername(): Promise<AuthenticationFinishResponse> {
+    return this.authenticateCredential();
   }
 
   // === 認証器管理 ===

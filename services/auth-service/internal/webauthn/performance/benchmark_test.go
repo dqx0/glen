@@ -408,6 +408,14 @@ func (m *mockRepository) DeleteCredential(ctx context.Context, credentialID []by
 	return repository.ErrCredentialNotFound
 }
 
+func (m *mockRepository) GetAllCredentials(ctx context.Context) ([]*models.WebAuthnCredential, error) {
+	var creds []*models.WebAuthnCredential
+	for _, cred := range m.credentials {
+		creds = append(creds, cred)
+	}
+	return creds, nil
+}
+
 func (m *mockRepository) GetCredentialsByUserIDWithTransports(ctx context.Context, userID string, transports []models.AuthenticatorTransport) ([]*models.WebAuthnCredential, error) {
 	return m.GetCredentialsByUserID(ctx, userID)
 }
@@ -438,15 +446,15 @@ func (m *mockRepository) CleanupExpiredCredentials(ctx context.Context, retentio
 	return nil
 }
 
-func (m *mockRepository) GetCredentialStatistics(ctx context.Context) (*repository.CredentialStatistics, error) {
-	return &repository.CredentialStatistics{
-		TotalCredentials: len(m.credentials),
-	}, nil
-}
-
 func (m *mockRepository) GetCredentialByTableID(ctx context.Context, id string) (*models.WebAuthnCredential, error) {
 	if cred, exists := m.credentials[id]; exists {
 		return cred, nil
 	}
 	return nil, repository.ErrCredentialNotFound
+}
+
+func (m *mockRepository) GetCredentialStatistics(ctx context.Context) (*repository.CredentialStatistics, error) {
+	return &repository.CredentialStatistics{
+		TotalCredentials: len(m.credentials),
+	}, nil
 }

@@ -97,13 +97,24 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
         }}></div>
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {/* パスワードレス認証ボタン */}
         <WebAuthnLoginButton
-          username={username}
+          passwordless={true}
           onSuccess={handleWebAuthnSuccess}
           onError={handleWebAuthnError}
-          disabled={disabled || !username.trim()}
+          disabled={disabled}
         />
+        
+        {/* ユーザー名指定認証ボタン */}
+        {username.trim() && (
+          <WebAuthnLoginButton
+            username={username}
+            onSuccess={handleWebAuthnSuccess}
+            onError={handleWebAuthnError}
+            disabled={disabled}
+          />
+        )}
       </div>
 
       {isPlatformSupported && (
@@ -120,7 +131,7 @@ const WebAuthnSection: React.FC<WebAuthnSectionProps> = ({
             🔒 このデバイスは生体認証をサポートしています
           </div>
           <div>
-            Touch ID、Face ID、またはWindows Helloを使用してログインできます
+            パスワードレスログインでは、ユーザー名入力不要で認証器が自動的にアカウントを識別します
           </div>
         </div>
       )}

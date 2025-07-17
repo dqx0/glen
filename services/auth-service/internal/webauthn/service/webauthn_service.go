@@ -617,54 +617,6 @@ func (s *webAuthnService) BeginAuthentication(ctx context.Context, req *Authenti
 		userID = userInfo.ID
 	}
 
-	if userID == "" {
-		return nil, ErrInvalidRequest("Either user_id or user_identifier must be provided")
-	}
-
-	// Get user credentials
-	credentials, err := s.credRepo.GetCredentialsByUserID(ctx, userID)
-	if err != nil {
-		// For testing purposes, treat any repository error as "not found"
-		// This is a more lenient approach that matches the test expectations
-		return nil, ErrCredentialNotFound("No credentials found for user")
-	}
-
-	if len(credentials) == 0 {
-		return nil, ErrCredentialNotFound("No credentials found for user")
-	}
-
-	// Filter credentials if specific ones are requested
-	if len(req.AllowedCredentials) > 0 {
-		filteredCreds := make([]*models.WebAuthnCredential, 0)
-		for _, cred := range credentials {
-			for _, allowedID := range req.AllowedCredentials {
-				if string(cred.CredentialID) == string(allowedID) {
-					filteredCreds = append(filteredCreds, cred)
-					break
-				}
-			}
-		}
-		credentials = filteredCreds
-	}
-
-	if len(credentials) == 0 {
-		return nil, ErrCredentialNotFound("No allowed credentials found for user")
-	}
-
-	// Convert to WebAuthn credentials
-	webauthnCreds := make([]webauthn.Credential, len(credentials))
-	for i, cred := range credentials {
-		webauthnCreds[i] = s.convertToWebAuthnCredential(cred)
-	}
-
-	// Create user adapter
-	user := &userAdapter{
-		userID:      []byte(userID),
-		username:    "user", // This should be retrieved from user service
-		displayName: "user",
-		credentials: webauthnCreds,
-	}
-
 	// Set authentication options
 	var authOptions []webauthn.LoginOption
 	
@@ -686,8 +638,67 @@ func (s *webAuthnService) BeginAuthentication(ctx context.Context, req *Authenti
 		}
 	}
 
-	// Begin authentication with WebAuthn library
-	assertion, session, err := s.webAuthn.BeginLogin(user, authOptions...)
+	var assertion *protocol.CredentialAssertion
+	var session *webauthn.SessionData
+	var credentials []*models.WebAuthnCredential
+	var err error
+	
+	if userID == "" {
+		// Passwordless authentication using discoverable credentials (resident keys)
+		assertion, session, err = s.webAuthn.BeginDiscoverableLogin(authOptions...)
+		if err != nil {
+			return nil, NewServiceErrorWithCause(ErrServiceInternal, "Failed to begin passwordless authentication", "", err)
+		}
+		// For passwordless authentication, we don't have specific credentials to reference
+		credentials = []*models.WebAuthnCredential{}
+	} else {
+		// User-specific authentication
+		credentials, err = s.credRepo.GetCredentialsByUserID(ctx, userID)
+		if err != nil {
+			// For testing purposes, treat any repository error as "not found"
+			// This is a more lenient approach that matches the test expectations
+			return nil, ErrCredentialNotFound("No credentials found for user")
+		}
+
+		if len(credentials) == 0 {
+			return nil, ErrCredentialNotFound("No credentials found for user")
+		}
+
+		// Filter credentials if specific ones are requested
+		if len(req.AllowedCredentials) > 0 {
+			filteredCreds := make([]*models.WebAuthnCredential, 0)
+			for _, cred := range credentials {
+				for _, allowedID := range req.AllowedCredentials {
+					if string(cred.CredentialID) == string(allowedID) {
+						filteredCreds = append(filteredCreds, cred)
+						break
+					}
+				}
+			}
+			credentials = filteredCreds
+		}
+
+		if len(credentials) == 0 {
+			return nil, ErrCredentialNotFound("No allowed credentials found for user")
+		}
+
+		// Convert to WebAuthn credentials
+		webauthnCreds := make([]webauthn.Credential, len(credentials))
+		for i, cred := range credentials {
+			webauthnCreds[i] = s.convertToWebAuthnCredential(cred)
+		}
+
+		// Create user adapter
+		user := &userAdapter{
+			userID:      []byte(userID),
+			username:    "user", // This should be retrieved from user service
+			displayName: "user",
+			credentials: webauthnCreds,
+		}
+
+		// Begin authentication with WebAuthn library
+		assertion, session, err = s.webAuthn.BeginLogin(user, authOptions...)
+	}
 	if err != nil {
 		return nil, NewServiceErrorWithCause(ErrServiceInternal, "Failed to begin authentication", "", err)
 	}
