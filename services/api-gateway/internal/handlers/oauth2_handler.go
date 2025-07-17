@@ -391,22 +391,12 @@ func (h *OAuth2Handler) getAPIGatewayBaseURL() string {
 
 // getLoginBaseURL は環境に応じたログインページのベースURLを取得
 func (h *OAuth2Handler) getLoginBaseURL() *url.URL {
-	env := os.Getenv("ENVIRONMENT")
-	if env == "production" {
-		baseURL, _ := url.Parse("https://glen.dqx0.com/login")
-		return baseURL
-	}
-	baseURL, _ := url.Parse("http://localhost:5173/login")
+	baseURL, _ := url.Parse("https://glen.dqx0.com/login")
 	return baseURL
 }
 
 // getConsentBaseURL は環境に応じた同意画面のベースURLを取得
 func (h *OAuth2Handler) getConsentBaseURL() *url.URL {
-	env := os.Getenv("ENVIRONMENT")
-	if env == "production" {
-		baseURL, _ := url.Parse("https://glen.dqx0.com/oauth2/consent")
-		return baseURL
-	}
-	baseURL, _ := url.Parse("http://localhost:5173/oauth2/consent")
+	baseURL, _ := url.Parse("https://glen.dqx0.com/oauth2/consent")
 	return baseURL
 }
