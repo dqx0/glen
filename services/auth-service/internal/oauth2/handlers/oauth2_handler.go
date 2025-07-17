@@ -107,7 +107,7 @@ func (h *OAuth2Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("OAuth2 Auth Service: Processing authorization for user: %s, client: %s", req.UserID, req.ClientID)
+	log.Printf("OAuth2 Auth Service: Processing authorization for user: %s, client: %s, redirect_uri: %s", req.UserID, req.ClientID, req.RedirectURI)
 
 	// Create service authorization request
 	authReq := &service.AuthorizeRequest{
@@ -120,9 +120,12 @@ func (h *OAuth2Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallengeMethod: req.CodeChallengeMethod,
 	}
 
+	log.Printf("OAuth2 Auth Service: Calling oauth2Service.Authorize with request: %+v", authReq)
+
 	// Process authorization through service
 	authResp, err := h.oauth2Service.Authorize(r.Context(), req.UserID, authReq)
 	if err != nil {
+		log.Printf("OAuth2 Auth Service: Authorization failed with error: %v", err)
 		h.writeOAuth2Error(w, h.mapServiceErrorToHTTPStatus(err), h.mapServiceErrorToOAuth2Error(err), err.Error())
 		return
 	}

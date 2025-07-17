@@ -28,6 +28,15 @@ app.get('/callback', (req, res) => {
   res.redirect(redirectUrl);
 });
 
+// OAuth2 コールバックエンドポイント（/auth/callback）
+app.get('/auth/callback', (req, res) => {
+  // クエリパラメータをそのまま index.html に渡すため、
+  // index.html をリダイレクト付きで返す
+  const queryString = req.url.split('?')[1] || '';
+  const redirectUrl = `/?${queryString}`;
+  res.redirect(redirectUrl);
+});
+
 // ヘルスチェック
 app.get('/health', (req, res) => {
   res.json({
