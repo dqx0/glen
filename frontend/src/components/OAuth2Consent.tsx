@@ -12,6 +12,15 @@ interface ConsentParams {
   user_id: string;
 }
 
+// 環境に応じたAPI GatewayのベースURLを取得
+const getAPIGatewayBaseURL = (): string => {
+  const env = process.env.NODE_ENV || 'development';
+  if (env === 'production') {
+    return 'https://api.glen.dqx0.com';
+  }
+  return 'http://localhost:8080';
+};
+
 const OAuth2Consent: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +82,7 @@ const OAuth2Consent: React.FC = () => {
       console.log('Request body:', consentData.toString());
 
       // POSTの代わりにGETリクエストでリダイレクト（クエリパラメータで同意結果を送信）
-      const url = new URL('http://localhost:8080/api/v1/oauth2/authorize');
+      const url = new URL(`${getAPIGatewayBaseURL()}/api/v1/oauth2/authorize`);
       url.searchParams.set('client_id', params.client_id);
       url.searchParams.set('redirect_uri', params.redirect_uri);
       url.searchParams.set('response_type', params.response_type);

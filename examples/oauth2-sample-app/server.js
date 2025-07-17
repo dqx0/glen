@@ -30,8 +30,8 @@ app.get('/callback', (req, res) => {
 
 // ヘルスチェック
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     service: 'glen-oauth2-sample-app'
   });
@@ -39,7 +39,7 @@ app.get('/health', (req, res) => {
 
 // 404ハンドラー
 app.use((req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     error: 'Not Found',
     message: 'The requested resource was not found',
     path: req.path
@@ -49,7 +49,7 @@ app.use((req, res) => {
 // エラーハンドラー
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Internal Server Error',
     message: 'An unexpected error occurred'
   });

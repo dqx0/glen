@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/dqx0/glen/auth-service/internal/oauth2/models"
@@ -698,8 +699,8 @@ func (h *OAuth2Handler) buildLoginURL(returnURL string) string {
 	// This should redirect to your application's login page
 	// The login page should handle authentication and redirect back to the OAuth authorization endpoint
 	// Build the full return URL for API Gateway (centralized access)
-	fullReturnURL := "http://localhost:8080" + returnURL
-	loginURL := "http://localhost:5173/login?redirect_uri=" + url.QueryEscape(fullReturnURL)
+	fullReturnURL := h.getAPIGatewayBaseURL() + returnURL
+	loginURL := h.getFrontendBaseURL() + "/login?redirect_uri=" + url.QueryEscape(fullReturnURL)
 	return loginURL
 }
 
@@ -825,4 +826,22 @@ func (h *OAuth2Handler) writeOAuth2Error(w http.ResponseWriter, statusCode int, 
 		ErrorDescription: errorDescription,
 	}
 	h.writeJSON(w, statusCode, response)
+}
+
+// getAPIGatewayBaseURL は環境に応じたAPI GatewayのベースURLを取得
+func (h *OAuth2Handler) getAPIGatewayBaseURL() string {
+	env := os.Getenv("ENVIRONMENT")
+	if env == "production" {
+		return "https://api.glen.dqx0.com"
+	}
+	return "http://localhost:8080"
+}
+
+// getFrontendBaseURL は環境に応じたフロントエンドのベースURLを取得
+func (h *OAuth2Handler) getFrontendBaseURL() string {
+	env := os.Getenv("ENVIRONMENT")
+	if env == "production" {
+		return "https://glen.dqx0.com"
+	}
+	return "http://localhost:5173"
 }

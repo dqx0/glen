@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -187,8 +188,8 @@ func (h *OAuth2Handler) redirectToLogin(w http.ResponseWriter, r *http.Request, 
 	// 現在のリクエストURLを構築
 	returnURL := h.buildReturnURL(req)
 	
-	// フロントエンドのログインページのURLを正しく構築
-	loginBaseURL, _ := url.Parse("http://localhost:5173/login")
+	// 環境に応じたフロントエンドのログインページのURLを構築
+	loginBaseURL := h.getLoginBaseURL()
 	loginParams := url.Values{}
 	loginParams.Set("redirect_uri", returnURL)
 	loginBaseURL.RawQuery = loginParams.Encode()
@@ -199,7 +200,7 @@ func (h *OAuth2Handler) redirectToLogin(w http.ResponseWriter, r *http.Request, 
 
 // buildReturnURL は認証後の戻りURLを構築
 func (h *OAuth2Handler) buildReturnURL(req AuthorizeRequest) string {
-	baseURL := "http://localhost:8080/api/v1/oauth2/authorize"
+	baseURL := h.getAPIGatewayBaseURL() + "/api/v1/oauth2/authorize"
 	params := url.Values{}
 	params.Set("client_id", req.ClientID)
 	params.Set("redirect_uri", req.RedirectURI)
@@ -272,8 +273,8 @@ func (h *OAuth2Handler) processAuthorization(w http.ResponseWriter, r *http.Requ
 
 // redirectToConsentScreen はフロントエンドの同意画面にリダイレクト
 func (h *OAuth2Handler) redirectToConsentScreen(w http.ResponseWriter, r *http.Request, req AuthorizeRequest, userID string) {
-	// フロントエンドの同意画面URLを構築
-	consentBaseURL, _ := url.Parse("http://localhost:5173/oauth2/consent")
+	// 環境に応じたフロントエンドの同意画面URLを構築
+	consentBaseURL := h.getConsentBaseURL()
 	consentParams := url.Values{}
 	consentParams.Set("client_id", req.ClientID)
 	consentParams.Set("redirect_uri", req.RedirectURI)
@@ -377,4 +378,35 @@ func (h *OAuth2Handler) extractUserIDFromJWT(token string) string {
 	}
 	
 	return ""
+}
+
+// getAPIGatewayBaseURL は環境に応じたAPI GatewayのベースURLを取得
+func (h *OAuth2Handler) getAPIGatewayBaseURL() string {
+	env := os.Getenv("ENVIRONMENT")
+	if env == "production" {
+		return "https://api.glen.dqx0.com"
+	}
+	return "http://localhost:8080"
+}
+
+// getLoginBaseURL は環境に応じたログインページのベースURLを取得
+func (h *OAuth2Handler) getLoginBaseURL() *url.URL {
+	env := os.Getenv("ENVIRONMENT")
+	if env == "production" {
+		baseURL, _ := url.Parse("https://glen.dqx0.com/login")
+		return baseURL
+	}
+	baseURL, _ := url.Parse("http://localhost:5173/login")
+	return baseURL
+}
+
+// getConsentBaseURL は環境に応じた同意画面のベースURLを取得
+func (h *OAuth2Handler) getConsentBaseURL() *url.URL {
+	env := os.Getenv("ENVIRONMENT")
+	if env == "production" {
+		baseURL, _ := url.Parse("https://glen.dqx0.com/oauth2/consent")
+		return baseURL
+	}
+	baseURL, _ := url.Parse("http://localhost:5173/oauth2/consent")
+	return baseURL
 }

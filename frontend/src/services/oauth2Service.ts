@@ -67,6 +67,15 @@ import { apiClient } from '../api/client';
 export class OAuth2Service {
   private static baseUrl = '/api/v1/oauth2';
 
+  // 環境に応じたAPI GatewayのベースURLを取得
+  private static getAPIGatewayBaseURL(): string {
+    const env = process.env.NODE_ENV || 'development';
+    if (env === 'production') {
+      return 'https://api.glen.dqx0.com';
+    }
+    return 'http://localhost:8080';
+  }
+
   // Client Management
   static async createClient(request: CreateClientRequest): Promise<CreateClientResponse> {
     try {
@@ -147,7 +156,7 @@ export class OAuth2Service {
       // instead of using AJAX requests, because the server will perform redirects
       
       // Navigate via API Gateway for centralized request handling
-      const authUrl = `http://localhost:8080/api/v1/oauth2/authorize?${params.toString()}`;
+      const authUrl = `${this.getAPIGatewayBaseURL()}/api/v1/oauth2/authorize?${params.toString()}`;
       
       console.log('OAuth2Service.authorize: Navigating via API Gateway:', authUrl);
       console.log('OAuth2Service.authorize: User ID being passed:', userData?.id);

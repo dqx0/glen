@@ -104,10 +104,10 @@
         <div class="config-section">
             <h3>📝 設定</h3>
             <label>Glen API Base URL:</label>
-            <input type="text" id="apiBaseUrl" class="config-input" value="https://api.glen.dqx0.com/api/v1">
+            <input type="text" id="apiBaseUrl" class="config-input">
             
             <label>Frontend Base URL:</label>
-            <input type="text" id="frontendBaseUrl" class="config-input" value="https://glen.dqx0.com">
+            <input type="text" id="frontendBaseUrl" class="config-input">
             
             <label>Client ID:</label>
             <input type="text" id="clientId" class="config-input" placeholder="your-oauth2-client-id">
@@ -116,7 +116,7 @@
             <input type="text" id="clientSecret" class="config-input" placeholder="your-oauth2-client-secret">
             
             <label>Redirect URI:</label>
-            <input type="text" id="redirectUri" class="config-input" value="http://localhost:3000/callback">
+            <input type="text" id="redirectUri" class="config-input">
             
             <label>Scope:</label>
             <input type="text" id="scope" class="config-input" value="read write">
@@ -185,11 +185,11 @@
             loadConfig() {
                 const saved = localStorage.getItem('oauth2_config');
                 return saved ? JSON.parse(saved) : {
-                    apiBaseUrl: 'https://api.glen.dqx0.com/api/v1',
-                    frontendBaseUrl: 'https://glen.dqx0.com',
+                    apiBaseUrl: this.getAPIBaseURL(),
+                    frontendBaseUrl: this.getFrontendBaseURL(),
                     clientId: '',
                     clientSecret: '',
-                    redirectUri: 'http://localhost:3000/callback',
+                    redirectUri: this.getRedirectURI(),
                     scope: 'read write'
                 };
             }
@@ -453,6 +453,36 @@
             generateState() {
                 return Math.random().toString(36).substring(2, 15) + 
                        Math.random().toString(36).substring(2, 15);
+            }
+
+            // 環境に応じたAPI BaseURLを取得
+            getAPIBaseURL() {
+                // 本番環境では本番URLを使用（プロダクション判定）
+                if (window.location.hostname === 'glen.dqx0.com' || 
+                    window.location.hostname === 'api.glen.dqx0.com') {
+                    return 'https://api.glen.dqx0.com/api/v1';
+                }
+                return 'https://api.glen.dqx0.com/api/v1';
+            }
+
+            // 環境に応じたFrontend BaseURLを取得
+            getFrontendBaseURL() {
+                // 本番環境では本番URLを使用（プロダクション判定）
+                if (window.location.hostname === 'glen.dqx0.com' || 
+                    window.location.hostname === 'api.glen.dqx0.com') {
+                    return 'https://glen.dqx0.com';
+                }
+                return 'https://glen.dqx0.com';
+            }
+
+            // 環境に応じたRedirect URIを取得
+            getRedirectURI() {
+                // 本番環境では本番URLを使用（プロダクション判定）
+                if (window.location.hostname === 'glen.dqx0.com' || 
+                    window.location.hostname === 'api.glen.dqx0.com') {
+                    return 'https://glen.dqx0.com/callback';
+                }
+                return 'http://localhost:3000/callback';
             }
 
         }
