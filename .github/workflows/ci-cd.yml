@@ -274,27 +274,45 @@ jobs:
                 containers:
                 - name: migrator
                   image: migrate/migrate:v4.16.2
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "500m"
                   command:
                   - /bin/sh
                   - -c
                   - |
-                    echo "Starting database migration..."
+                    set -e
+                    echo "=== Database Migration Started ==="
                     echo "Job: $JOB_NAME"
                     echo "Time: \$(date)"
+                    echo "Environment variables loaded"
                     
                     # Install postgresql client
+                    echo "Installing PostgreSQL client..."
                     apk update && apk add --no-cache postgresql15-client || echo "PostgreSQL client install failed"
                     
                     # List migration files
+                    echo "=== Migration Files ==="
                     ls -la /migrations/
+                    echo "Total migration files: \$(ls -1 /migrations/*.sql 2>/dev/null | wc -l)"
+                    
+                    # Test database connection first
+                    echo "=== Testing Database Connection ==="
+                    DB_URL_NO_SSL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=disable"
+                    echo "Database URL: postgres://\$DB_USER:***@\$DB_HOST:5432/\$DB_NAME?sslmode=disable"
+                    
+                    # Test connection with psql
+                    if command -v psql >/dev/null 2>&1; then
+                      echo "Testing connection with psql..."
+                      PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "SELECT version();" || echo "Connection test failed"
+                    fi
                     
                     # Run migrations
-                    echo "Running migrations..."
-                    DB_URL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=require"
-                    DB_URL_NO_SSL="postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=disable"
-                    echo "Database URL: postgres://\$DB_USER:***@\$DB_HOST:5432/\$DB_NAME?sslmode=require"
-
-                    # Try migration, handle dirty database state
+                    echo "=== Running Migrations ==="
                     MIGRATION_OUTPUT=\$(migrate -path /migrations -database "\$DB_URL_NO_SSL" up 2>&1)
                     
                     if [ \$? -ne 0 ]; then
@@ -313,11 +331,16 @@ jobs:
                     fi
                     
                     # Verify tables were created
+                    echo "=== Verifying Migration Results ==="
                     if command -v psql >/dev/null 2>&1; then
+                      echo "Listing database tables:"
                       PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "\\dt" || echo "Table verification failed"
+                      echo "Checking migration status:"
+                      PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "SELECT * FROM schema_migrations ORDER BY version;" || echo "Migration status check failed"
                     fi
                     
-                    echo "Database migration completed successfully at: \$(date)"
+                    echo "=== Database Migration Completed Successfully ==="
+                    echo "Completion time: \$(date)"
                   env:
                   - name: DB_HOST
                     valueFrom:
@@ -369,10 +392,19 @@ jobs:
             if [[ $((i % 10)) -eq 0 ]]; then
               echo "Migration job status after ${i}0 seconds:"
               kubectl get job $JOB_NAME -n glen-system -o wide 2>/dev/null || echo "Job not found"
+              
+              # Get pod information
+              kubectl get pods -n glen-system -l job-name=$JOB_NAME -o wide 2>/dev/null || echo "No pods found"
               POD_NAME=$(kubectl get pods -n glen-system -l job-name=$JOB_NAME -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+              
               if [[ -n "$POD_NAME" ]]; then
-                echo "Current pod logs:"
+                echo "Pod status:"
+                kubectl describe pod $POD_NAME -n glen-system | grep -A 10 "Conditions:\|Events:"
+                echo "Pod logs:"
                 kubectl logs -n glen-system $POD_NAME --tail=20 2>/dev/null || echo "No logs available"
+              else
+                echo "No pod found for job, checking events:"
+                kubectl get events -n glen-system --sort-by='.lastTimestamp' | tail -10
               fi
             fi
             
