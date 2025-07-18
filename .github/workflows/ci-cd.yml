@@ -67,6 +67,7 @@ jobs:
           cd ../user-service && go mod download
           cd ../social-service && go mod download
           cd ../api-gateway && go mod download
+          cd ../../tools/migrator && go mod download
 
       - name: Run unit tests
         run: make test-unit
@@ -94,7 +95,7 @@ jobs:
         run: make test-coverage
 
   build:
-    # needs: test  # Temporarily skip tests for faster deployment
+    needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
@@ -170,6 +171,14 @@ jobs:
             docker push $DOCKER_HUB_USERNAME/glen-frontend:$IMAGE_TAG &&
             docker push $DOCKER_HUB_USERNAME/glen-frontend:latest &&
             echo "glen-frontend:$IMAGE_TAG pushed successfully"
+          ) &
+          
+          (
+            docker build -t $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG -f tools/migrator/Dockerfile tools/migrator &&
+            docker tag $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG $DOCKER_HUB_USERNAME/glen-migrator:latest &&
+            docker push $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG &&
+            docker push $DOCKER_HUB_USERNAME/glen-migrator:latest &&
+            echo "glen-migrator:$IMAGE_TAG pushed successfully"
           ) &
           
           # Wait for all background jobs to complete
@@ -268,8 +277,8 @@ jobs:
             --from-literal=OAUTH_CLIENT_SECRET="${{ secrets.OAUTH_CLIENT_SECRET }}" \
             --from-literal=GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
             --from-literal=GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
-            --from-literal=GITHUB_CLIENT_ID="${{ secrets.GITHUB_CLIENT_ID }}" \
-            --from-literal=GITHUB_CLIENT_SECRET="${{ secrets.GITHUB_CLIENT_SECRET }}" \
+            --from-literal=_GITHUB_CLIENT_ID="${{ secrets.GITHUB_CLIENT_ID }}" \
+            --from-literal=_GITHUB_CLIENT_SECRET="${{ secrets.GITHUB_CLIENT_SECRET }}" \
             --from-literal=DISCORD_CLIENT_ID="${{ secrets.DISCORD_CLIENT_ID }}" \
             --from-literal=DISCORD_CLIENT_SECRET="${{ secrets.DISCORD_CLIENT_SECRET }}" \
             --dry-run=client -o yaml | kubectl apply -f -
@@ -277,12 +286,7 @@ jobs:
           # Clean up any existing failed migration jobs
           kubectl delete job -n glen-system -l app=glen-db-migrate --ignore-not-found=true
           
-          # Build and push migrator image
-          echo "Building migrator image..."
-          docker build -t $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG -f tools/migrator/Dockerfile tools/migrator
-          docker push $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG
-          
-          # Create migration job
+
           cat <<EOF | kubectl apply -f -
           apiVersion: batch/v1
           kind: Job
@@ -292,8 +296,9 @@ jobs:
             labels:
               app: glen-db-migrate
           spec:
-            backoffLimit: 3
-            ttlSecondsAfterFinished: 300
+            backoffLimit: 2
+            ttlSecondsAfterFinished: 600
+            activeDeadlineSeconds: 600
             template:
               spec:
                 restartPolicy: Never
@@ -320,48 +325,68 @@ jobs:
                     value: "production"
                   resources:
                     requests:
-                      memory: "128Mi"
-                      cpu: "100m"
-                    limits:
                       memory: "256Mi"
                       cpu: "200m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "500m"
                   command: ["/bin/sh", "-c"]
                   args:
                     - |
-                      echo "Starting database migrations..."
+                      echo "🚀 Starting database migrations..."
                       echo "Database host: \$DB_HOST"
                       echo "Database name: \$DB_NAME"
                       echo "Database user: \$DB_USER"
                       
-                      # Run migrations
-                      ./migrator -cmd=up -migrations-dir=./migrations
+                      # Test database connection first
+                      echo "Testing database connection..."
+                      timeout 30 sh -c 'until pg_isready -h \$DB_HOST -p \$DB_PORT -U \$DB_USER; do echo "Waiting for database..."; sleep 2; done'
                       
                       if [ \$? -eq 0 ]; then
-                        echo "✅ Database migrations completed successfully"
+                        echo "✅ Database connection successful"
                         
-                        # Check migration status
-                        echo "Checking migration status..."
-                        ./migrator -cmd=status -migrations-dir=./migrations
+                        # Run migrations
+                        echo "Running migrations..."
+                        ./migrator -cmd=up -migrations-dir=./migrations
                         
-                        echo "✅ Migration job completed successfully"
+                        if [ \$? -eq 0 ]; then
+                          echo "✅ Database migrations completed successfully"
+                          
+                          # Check migration status
+                          echo "Checking migration status..."
+                          ./migrator -cmd=status -migrations-dir=./migrations
+                          
+                          echo "✅ Migration job completed successfully"
+                        else
+                          echo "❌ Database migrations failed"
+                          exit 1
+                        fi
                       else
-                        echo "❌ Database migrations failed"
+                        echo "❌ Database connection failed"
                         exit 1
                       fi
           EOF
           
           # Wait for migration job to complete
           echo "Waiting for migration job to complete..."
-          kubectl wait --for=condition=complete job/glen-db-migrate-${{ github.run_number }} -n glen-system --timeout=300s
+          kubectl wait --for=condition=complete job/glen-db-migrate-${{ github.run_number }} -n glen-system --timeout=600s
           
-          # Check job status
-          JOB_STATUS=$(kubectl get job glen-db-migrate-${{ github.run_number }} -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+          # Check job status with better error handling
+          JOB_STATUS=$(kubectl get job glen-db-migrate-${{ github.run_number }} -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || echo "Unknown")
+          FAILED_STATUS=$(kubectl get job glen-db-migrate-${{ github.run_number }} -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || echo "False")
           
           if [ "$JOB_STATUS" = "True" ]; then
             echo "✅ Migration job completed successfully"
             kubectl logs job/glen-db-migrate-${{ github.run_number }} -n glen-system
-          else
+          elif [ "$FAILED_STATUS" = "True" ]; then
             echo "❌ Migration job failed"
+            kubectl logs job/glen-db-migrate-${{ github.run_number }} -n glen-system
+            kubectl describe job glen-db-migrate-${{ github.run_number }} -n glen-system
+            kubectl get events -n glen-system --sort-by=.metadata.creationTimestamp | grep glen-db-migrate
+            exit 1
+          else
+            echo "⚠️ Migration job status unknown or still running"
+            kubectl get job glen-db-migrate-${{ github.run_number }} -n glen-system -o yaml
             kubectl logs job/glen-db-migrate-${{ github.run_number }} -n glen-system
             kubectl describe job glen-db-migrate-${{ github.run_number }} -n glen-system
             exit 1
@@ -380,11 +405,49 @@ jobs:
           
           # Wait for all deployments to be ready (with proper timeout)
           echo "Waiting for all services to be ready..."
-          kubectl rollout status deployment/glen-auth-service -n glen-system --timeout=120s
-          kubectl rollout status deployment/glen-user-service -n glen-system --timeout=120s
-          kubectl rollout status deployment/glen-social-service -n glen-system --timeout=120s
-          kubectl rollout status deployment/glen-api-gateway -n glen-system --timeout=120s
-          kubectl rollout status deployment/glen-frontend -n glen-system --timeout=120s
+          set +e  # Don't exit on error to allow collecting diagnostic info
+          
+          kubectl rollout status deployment/glen-auth-service -n glen-system --timeout=300s
+          if [ $? -ne 0 ]; then
+            echo "❌ Auth service failed to deploy"
+            kubectl describe deployment glen-auth-service -n glen-system
+            kubectl get pods -n glen-system -l app=glen-auth-service
+            kubectl logs -n glen-system -l app=glen-auth-service --tail=50
+          fi
+          
+          kubectl rollout status deployment/glen-user-service -n glen-system --timeout=300s
+          if [ $? -ne 0 ]; then
+            echo "❌ User service failed to deploy"
+            kubectl describe deployment glen-user-service -n glen-system
+            kubectl get pods -n glen-system -l app=glen-user-service
+            kubectl logs -n glen-system -l app=glen-user-service --tail=50
+          fi
+          
+          kubectl rollout status deployment/glen-social-service -n glen-system --timeout=300s
+          if [ $? -ne 0 ]; then
+            echo "❌ Social service failed to deploy"
+            kubectl describe deployment glen-social-service -n glen-system
+            kubectl get pods -n glen-system -l app=glen-social-service
+            kubectl logs -n glen-system -l app=glen-social-service --tail=50
+          fi
+          
+          kubectl rollout status deployment/glen-api-gateway -n glen-system --timeout=300s
+          if [ $? -ne 0 ]; then
+            echo "❌ API Gateway failed to deploy"
+            kubectl describe deployment glen-api-gateway -n glen-system
+            kubectl get pods -n glen-system -l app=glen-api-gateway
+            kubectl logs -n glen-system -l app=glen-api-gateway --tail=50
+          fi
+          
+          kubectl rollout status deployment/glen-frontend -n glen-system --timeout=300s
+          if [ $? -ne 0 ]; then
+            echo "❌ Frontend failed to deploy"
+            kubectl describe deployment glen-frontend -n glen-system
+            kubectl get pods -n glen-system -l app=glen-frontend
+            kubectl logs -n glen-system -l app=glen-frontend --tail=50
+          fi
+          
+          set -e  # Re-enable exit on error
           
           echo "✅ All services are ready and running"
 
