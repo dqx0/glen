@@ -164,10 +164,10 @@ func loadOAuth2Configs() map[string]*models.OAuth2Config {
 	}
 
 	// GitHub OAuth2設定
-	if clientID := os.Getenv("GITHUB_CLIENT_ID"); clientID != "" {
+	if clientID := os.Getenv("_GITHUB_CLIENT_ID"); clientID != "" {
 		config := models.GetDefaultOAuth2Config(models.ProviderGitHub)
 		config.ClientID = clientID
-		config.ClientSecret = os.Getenv("GITHUB_CLIENT_SECRET")
+		config.ClientSecret = os.Getenv("_GITHUB_CLIENT_SECRET")
 		config.RedirectURL = os.Getenv("GITHUB_REDIRECT_URL")
 		if config.RedirectURL == "" {
 			config.RedirectURL = "http://localhost:8080/auth/github/callback"

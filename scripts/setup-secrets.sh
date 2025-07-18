@@ -112,12 +112,12 @@ get_secrets() {
     read -p "GitHub OAuth情報を入力しますか？ (Y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Nn]$ ]]; then
-        GITHUB_CLIENT_ID=""
-        GITHUB_CLIENT_SECRET=""
+        _GITHUB_CLIENT_ID=""
+        _GITHUB_CLIENT_SECRET=""
         log_info "GitHub OAuth情報をスキップしました"
     else
-        read -p "GitHub Client ID: " GITHUB_CLIENT_ID
-        read -s -p "GitHub Client Secret: " GITHUB_CLIENT_SECRET
+        read -p "GitHub Client ID: " _GITHUB_CLIENT_ID
+        read -s -p "GitHub Client Secret: " _GITHUB_CLIENT_SECRET
         echo
     fi
     
@@ -151,8 +151,8 @@ create_k8s_secrets() {
         --from-literal=OAUTH_CLIENT_SECRET="$OAUTH_CLIENT_SECRET" \
         --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
         --from-literal=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
-        --from-literal=GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" \
-        --from-literal=GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET" \
+        --from-literal=_GITHUB_CLIENT_ID="$_GITHUB_CLIENT_ID" \
+        --from-literal=_GITHUB_CLIENT_SECRET="$_GITHUB_CLIENT_SECRET" \
         --from-literal=DISCORD_CLIENT_ID="$DISCORD_CLIENT_ID" \
         --from-literal=DISCORD_CLIENT_SECRET="$DISCORD_CLIENT_SECRET" \
         --dry-run=client -o yaml | kubectl apply -f -
