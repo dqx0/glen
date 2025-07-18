@@ -291,13 +291,6 @@ jobs:
                 containers:
                 - name: migrator
                   image: migrate/migrate:v4.16.2
-                  resources:
-                    requests:
-                      memory: "128Mi"
-                      cpu: "100m"
-                    limits:
-                      memory: "512Mi"
-                      cpu: "500m"
                   command:
                   - /bin/sh
                   - -c
