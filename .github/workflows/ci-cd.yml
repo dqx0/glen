@@ -274,75 +274,151 @@ jobs:
             --from-literal=DISCORD_CLIENT_SECRET="${{ secrets.DISCORD_CLIENT_SECRET }}" \
             --dry-run=client -o yaml | kubectl apply -f -
           
-          # Create ConfigMap from migration files
-          kubectl create configmap glen-db-migrations \
-            --from-file=tools/migrator/migrations/ \
-            --namespace=glen-system \
-            --dry-run=client -o yaml | kubectl apply -f -
-          
           # Clean up any existing failed migration jobs
           kubectl delete job -n glen-system -l app=glen-db-migrate --ignore-not-found=true
           
-          # Simple migration using kubectl run
-          echo "Running database migration..."
-          kubectl run glen-db-migrate \
-            --image=postgres:15-alpine \
-            --rm -i --restart=Never \
-            --namespace=glen-system \
-            --env="PGPASSWORD=${{ secrets.DB_PASSWORD }}" \
-            -- psql -h ${{ secrets.DB_HOST }} -U postgres -d glen_production -c "SELECT version();"
+          # Build and push migrator image
+          echo "Building migrator image..."
+          docker build -t $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG -f tools/migrator/Dockerfile tools/migrator
+          docker push $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG
           
-          echo "Database migration completed"
+          # Create migration job
+          cat <<EOF | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: glen-db-migrate-${{ github.run_number }}
+            namespace: glen-system
+            labels:
+              app: glen-db-migrate
+          spec:
+            backoffLimit: 3
+            ttlSecondsAfterFinished: 300
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                - name: migrator
+                  image: $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG
+                  env:
+                  - name: DB_HOST
+                    value: "${{ secrets.DB_HOST }}"
+                  - name: DB_PORT
+                    value: "5432"
+                  - name: DB_USER
+                    value: "glen_user"
+                  - name: DB_PASSWORD
+                    valueFrom:
+                      secretKeyRef:
+                        name: glen-secrets
+                        key: DB_PASSWORD
+                  - name: DB_NAME
+                    value: "glen_prod"
+                  - name: DB_SSLMODE
+                    value: "disable"
+                  - name: ENV
+                    value: "production"
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "256Mi"
+                      cpu: "200m"
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      echo "Starting database migrations..."
+                      echo "Database host: \$DB_HOST"
+                      echo "Database name: \$DB_NAME"
+                      echo "Database user: \$DB_USER"
+                      
+                      # Run migrations
+                      ./migrator -cmd=up -migrations-dir=./migrations
+                      
+                      if [ \$? -eq 0 ]; then
+                        echo "✅ Database migrations completed successfully"
+                        
+                        # Check migration status
+                        echo "Checking migration status..."
+                        ./migrator -cmd=status -migrations-dir=./migrations
+                        
+                        echo "✅ Migration job completed successfully"
+                      else
+                        echo "❌ Database migrations failed"
+                        exit 1
+                      fi
+          EOF
+          
+          # Wait for migration job to complete
+          echo "Waiting for migration job to complete..."
+          kubectl wait --for=condition=complete job/glen-db-migrate-${{ github.run_number }} -n glen-system --timeout=300s
+          
+          # Check job status
+          JOB_STATUS=$(kubectl get job glen-db-migrate-${{ github.run_number }} -n glen-system -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+          
+          if [ "$JOB_STATUS" = "True" ]; then
+            echo "✅ Migration job completed successfully"
+            kubectl logs job/glen-db-migrate-${{ github.run_number }} -n glen-system
+          else
+            echo "❌ Migration job failed"
+            kubectl logs job/glen-db-migrate-${{ github.run_number }} -n glen-system
+            kubectl describe job glen-db-migrate-${{ github.run_number }} -n glen-system
+            exit 1
+          fi
 
 
       - name: Wait for deployment to complete
         run: |
-          # Wait for deployments with better error handling
-          SERVICES=("glen-auth-service" "glen-user-service" "glen-social-service" "glen-api-gateway" "glen-frontend")
+          # Wait for deployments to be ready after successful migration
+          echo "✅ Migrations completed successfully. Starting application deployments..."
+          sleep 30
           
-          # Clean up stuck deployments first
-          for service in "${SERVICES[@]}"; do
-            echo "Checking $service deployment..."
-            
-            # Delete ALL pods for this service to force recreation
-            kubectl delete pods -n glen-system -l app=$service --grace-period=0 --force --ignore-not-found=true
-            
-            # Wait a moment for pods to be deleted
-            sleep 5
-            
-            # Force restart to apply new resource limits
-            kubectl rollout restart deployment/$service -n glen-system
-            
-            # Wait with shorter timeout
-            if kubectl rollout status deployment/$service -n glen-system --timeout=120s; then
-              echo "$service deployment completed successfully"
-            else
-              echo "$service deployment failed, checking status..."
-              kubectl get pods -n glen-system -l app=$service
-              kubectl describe deployment/$service -n glen-system
-              
-              # Try to scale down and up to force recreation
-              kubectl scale deployment/$service -n glen-system --replicas=0
-              sleep 5
-              kubectl scale deployment/$service -n glen-system --replicas=1
-              
-              echo "Continuing with other services..."
-            fi
-          done
+          # Check deployment status
+          kubectl get deployments -n glen-system
+          kubectl get pods -n glen-system
+          
+          # Wait for all deployments to be ready (with proper timeout)
+          echo "Waiting for all services to be ready..."
+          kubectl rollout status deployment/glen-auth-service -n glen-system --timeout=120s
+          kubectl rollout status deployment/glen-user-service -n glen-system --timeout=120s
+          kubectl rollout status deployment/glen-social-service -n glen-system --timeout=120s
+          kubectl rollout status deployment/glen-api-gateway -n glen-system --timeout=120s
+          kubectl rollout status deployment/glen-frontend -n glen-system --timeout=120s
+          
+          echo "✅ All services are ready and running"
 
-      - name: Verify deployment
+      - name: Verify deployment and get External IPs
         run: |
           kubectl get pods -n glen-system
           kubectl get services -n glen-system
           kubectl get ingress -n glen-system
-
-      - name: Run health checks
-        run: |
-          # Wait for services to be ready
-          sleep 30
           
-          # Get service URLs and run health checks
-          API_GATEWAY_URL=$(kubectl get service glen-api-gateway-service -n glen-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          if [ ! -z "$API_GATEWAY_URL" ]; then
-            curl -f http://$API_GATEWAY_URL/health || exit 1
+          echo ""
+          echo "=== DNS Registration Information ==="
+          
+          # Get API Gateway External IP
+          API_GATEWAY_IP=$(kubectl get service glen-api-gateway-service -n glen-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "Pending")
+          echo "API Gateway External IP (for api.glen.dqx0.com): $API_GATEWAY_IP"
+          
+          # Get Frontend External IP  
+          FRONTEND_IP=$(kubectl get service glen-frontend-service -n glen-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "Pending")
+          echo "Frontend External IP (for glen.dqx0.com): $FRONTEND_IP"
+          
+          echo ""
+          echo "=== DNS Records to Configure ==="
+          if [[ "$API_GATEWAY_IP" != "Pending" && "$API_GATEWAY_IP" != "" ]]; then
+            echo "A record: api.glen.dqx0.com -> $API_GATEWAY_IP"
+          else
+            echo "A record: api.glen.dqx0.com -> (IP still pending)"
           fi
+          
+          if [[ "$FRONTEND_IP" != "Pending" && "$FRONTEND_IP" != "" ]]; then
+            echo "A record: glen.dqx0.com -> $FRONTEND_IP"
+          else
+            echo "A record: glen.dqx0.com -> (IP still pending)"
+          fi
+          
+          echo ""
+          echo "Wait a few minutes for LoadBalancer IPs to be assigned if showing as Pending"
+          echo "Check GCP Console > Kubernetes Engine > Services & Ingress for IP addresses"
