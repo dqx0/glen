@@ -67,6 +67,7 @@ jobs:
           cd ../user-service && go mod download
           cd ../social-service && go mod download
           cd ../api-gateway && go mod download
+          cd ../../tools/migrator && go mod download
 
       - name: Run unit tests
         run: make test-unit
@@ -94,7 +95,7 @@ jobs:
         run: make test-coverage
 
   build:
-    # needs: test  # Temporarily skip tests for faster deployment
+    needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
@@ -170,6 +171,14 @@ jobs:
             docker push $DOCKER_HUB_USERNAME/glen-frontend:$IMAGE_TAG &&
             docker push $DOCKER_HUB_USERNAME/glen-frontend:latest &&
             echo "glen-frontend:$IMAGE_TAG pushed successfully"
+          ) &
+          
+          (
+            docker build -t $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG -f tools/migrator/Dockerfile tools/migrator &&
+            docker tag $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG $DOCKER_HUB_USERNAME/glen-migrator:latest &&
+            docker push $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG &&
+            docker push $DOCKER_HUB_USERNAME/glen-migrator:latest &&
+            echo "glen-migrator:$IMAGE_TAG pushed successfully"
           ) &
           
           # Wait for all background jobs to complete
