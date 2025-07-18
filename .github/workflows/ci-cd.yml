@@ -226,7 +226,6 @@ jobs:
           # Verify namespace exists and is active
           kubectl get namespace glen-system
           echo "Namespace glen-system is ready"
-          
           # Apply remaining Kubernetes manifests (exclude namespace.yaml)
           for file in infrastructure/k8s/*.yaml; do
             if [[ "$file" != "infrastructure/k8s/namespace.yaml" ]]; then
