@@ -244,18 +244,27 @@ jobs:
           # Clean up dynamically generated configmap
           rm -f infrastructure/k8s/configmap.yaml
 
-      - name: Scale up cluster for migration
+      - name: Upgrade node pool for migration
         run: |
-          # Get current node pool info
-          gcloud container clusters describe glen-cluster --zone asia-northeast1-a --project glen-465915
+          # Current e2-micro nodes don't have enough memory (130%+ usage)
+          # Create a temporary larger node pool for migration
+          gcloud container node-pools create migration-pool \
+            --cluster=glen-cluster \
+            --zone=asia-northeast1-a \
+            --project=glen-465915 \
+            --machine-type=e2-small \
+            --num-nodes=1 \
+            --disk-size=20GB \
+            --quiet
           
-          # Scale up node pool to provide more memory
-          gcloud container clusters resize glen-cluster --num-nodes=2 --zone asia-northeast1-a --project glen-465915 --quiet
-          
-          # Wait for nodes to be ready
-          echo "Waiting for nodes to be ready..."
-          sleep 60
+          # Wait for the new node to be ready
+          echo "Waiting for larger node to be ready..."
+          sleep 90
           kubectl get nodes
+          
+          # Taint the original e2-micro nodes to prevent scheduling
+          kubectl taint nodes -l cloud.google.com/gke-nodepool=glen-nodes \
+            migration=true:NoSchedule || true
 
       - name: Run database migrations
         run: |
@@ -436,11 +445,20 @@ jobs:
           kubectl scale deployment glen-api-gateway --replicas=1 -n glen-system || true
           kubectl scale deployment glen-frontend --replicas=1 -n glen-system || true
 
-      - name: Scale down cluster after migration
+      - name: Clean up migration resources
         run: |
-          # Scale back down to save costs
-          gcloud container clusters resize glen-cluster --num-nodes=1 --zone asia-northeast1-a --project glen-465915 --quiet
-          echo "Cluster scaled back down to 1 node"
+          # Remove taint from original nodes
+          kubectl taint nodes -l cloud.google.com/gke-nodepool=glen-nodes \
+            migration=true:NoSchedule- || true
+          
+          # Delete the temporary migration node pool
+          gcloud container node-pools delete migration-pool \
+            --cluster=glen-cluster \
+            --zone=asia-northeast1-a \
+            --project=glen-465915 \
+            --quiet
+          
+          echo "Migration node pool cleaned up"
 
       - name: Wait for deployment to complete
         run: |
