@@ -11,6 +11,8 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
+  # Use service account key file for authentication
+  # credentials = file("path/to/service-account-key.json")
 }
 
 
@@ -141,18 +143,39 @@ resource "google_container_cluster" "glen_cluster" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
   
-  node_config {
-    machine_type = "e2-micro"
-    disk_size_gb = 12
-    disk_type    = "pd-standard"
-    
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-    
-    workload_metadata_config {
-      mode = "GKE_METADATA"
+  # Add DNS and networking improvements
+  dns_config {
+    cluster_dns        = "CLOUD_DNS"
+    cluster_dns_scope  = "CLUSTER_SCOPE"
+    cluster_dns_domain = "cluster.local"
+  }
+  
+  # Enable required addons
+  addons_config {
+    http_load_balancing {
+      disabled = false
     }
+    horizontal_pod_autoscaling {
+      disabled = false
+    }
+    gce_persistent_disk_csi_driver_config {
+      enabled = true
+    }
+  }
+  
+  # Release channel for stable updates
+  release_channel {
+    channel = "REGULAR"
+  }
+  
+  # Network policy
+  network_policy {
+    enabled = false
+  }
+  
+  # Cluster autoscaling
+  cluster_autoscaling {
+    enabled = false
   }
 }
 
@@ -163,7 +186,7 @@ resource "google_container_node_pool" "glen_nodes" {
   node_count = 1
   
   node_config {
-    machine_type = "e2-micro"
+    machine_type = "e2-small"  # 2GB RAM for stable operation
     disk_size_gb = 20
     disk_type    = "pd-standard"
     
@@ -174,11 +197,24 @@ resource "google_container_node_pool" "glen_nodes" {
     workload_metadata_config {
       mode = "GKE_METADATA"
     }
+    
+    # Security and stability improvements
+    shielded_instance_config {
+      enable_secure_boot          = true
+      enable_integrity_monitoring = true
+    }
   }
   
   management {
     auto_repair  = true
     auto_upgrade = true
+  }
+  
+  # Prevent node pool replacement during updates
+  lifecycle {
+    ignore_changes = [
+      node_config[0].taint,
+    ]
   }
 }
 
