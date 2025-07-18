@@ -246,13 +246,7 @@ jobs:
 
       - name: Run database migrations
         run: |
-          # Create ConfigMap from migration files
-          kubectl create configmap glen-db-migrations \
-            --from-file=tools/migrator/migrations/ \
-            --namespace=glen-system \
-            --dry-run=client -o yaml | kubectl apply -f -
-          
-          # Create database migration job
+          # Create database migration job using our custom migrator image
           JOB_NAME="glen-db-migrate-$(date +%s)"
           cat <<EOF | kubectl apply -f -
           apiVersion: batch/v1
@@ -262,7 +256,7 @@ jobs:
             namespace: glen-system
           spec:
             activeDeadlineSeconds: 600
-            backoffLimit: 3
+            backoffLimit: 2
             template:
               spec:
                 restartPolicy: OnFailure
@@ -326,28 +320,76 @@ jobs:
                       configMapKeyRef:
                         name: glen-config
                         key: DB_HOST
+                  - name: DB_PORT
+                    value: "5432"
                   - name: DB_USER
                     valueFrom:
                       configMapKeyRef:
                         name: glen-config
                         key: DB_USER
-                  - name: DB_NAME
-                    valueFrom:
-                      configMapKeyRef:
-                        name: glen-config
-                        key: DB_NAME
                   - name: DB_PASSWORD
                     valueFrom:
                       secretKeyRef:
                         name: glen-secrets
                         key: DB_PASSWORD
-                  volumeMounts:
-                  - name: migrations
-                    mountPath: /migrations
-                volumes:
-                - name: migrations
-                  configMap:
-                    name: glen-db-migrations
+                  - name: DB_NAME
+                    valueFrom:
+                      configMapKeyRef:
+                        name: glen-config
+                        key: DB_NAME
+                  - name: DB_SSLMODE
+                    value: "disable"
+                  - name: ENV
+                    value: "production"
+                  resources:
+                    requests:
+                      memory: "64Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "128Mi"
+                      cpu: "200m"
+                  command: ["/bin/sh", "-c"]
+                  args:
+                    - |
+                      echo "🚀 Starting database migrations..."
+                      echo "Database host: \$DB_HOST"
+                      echo "Database name: \$DB_NAME"
+                      echo "Database user: \$DB_USER"
+                      echo "Database port: \$DB_PORT"
+                      echo "SSL mode: \$DB_SSLMODE"
+                      echo "Environment: \$ENV"
+                      
+                      # List migration files
+                      echo "Available migration files:"
+                      ls -la ./migrations/
+                      
+                      # Test database connection first
+                      echo "Testing database connection..."
+                      timeout 30 sh -c 'until pg_isready -h \$DB_HOST -p \$DB_PORT -U \$DB_USER; do echo "Waiting for database..."; sleep 2; done'
+                      
+                      if [ \$? -eq 0 ]; then
+                        echo "✅ Database connection successful"
+                        
+                        # Run migrations
+                        echo "Running migrations..."
+                        ./migrator -cmd=up -migrations-dir=./migrations
+                        
+                        if [ \$? -eq 0 ]; then
+                          echo "✅ Database migrations completed successfully"
+                          
+                          # Check migration status
+                          echo "Checking migration status..."
+                          ./migrator -cmd=status -migrations-dir=./migrations
+                          
+                          echo "✅ Migration job completed successfully"
+                        else
+                          echo "❌ Database migrations failed"
+                          exit 1
+                        fi
+                      else
+                        echo "❌ Database connection failed"
+                        exit 1
+                      fi
           EOF
           
           # Wait for migration job to complete
