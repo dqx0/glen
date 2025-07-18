@@ -263,6 +263,12 @@ jobs:
           kubectl scale deployment --all --replicas=0 -n glen-system || true
           sleep 10
           
+          # Create glen-secrets Secret (migration only needs DB_PASSWORD)
+          kubectl create secret generic glen-secrets \
+            --namespace=glen-system \
+            --from-literal=DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          
           # Create ConfigMap from migration files
           kubectl create configmap glen-db-migrations \
             --from-file=tools/migrator/migrations/ \
