@@ -291,6 +291,13 @@ jobs:
                 containers:
                 - name: migrator
                   image: migrate/migrate:v4.16.2
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "500m"
                   command:
                   - /bin/sh
                   - -c
@@ -299,6 +306,7 @@ jobs:
                     echo "=== Database Migration Started ==="
                     echo "Job: $JOB_NAME"
                     echo "Time: \$(date)"
+                    echo "Environment variables loaded"
                     
                     # Install postgresql client
                     echo "Installing PostgreSQL client..."
