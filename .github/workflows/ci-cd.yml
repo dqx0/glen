@@ -286,7 +286,7 @@ jobs:
           # Clean up any existing failed migration jobs
           kubectl delete job -n glen-system -l app=glen-db-migrate --ignore-not-found=true
           
-          # Create migration job (migrator image already built and pushed in build step)
+
           cat <<EOF | kubectl apply -f -
           apiVersion: batch/v1
           kind: Job
