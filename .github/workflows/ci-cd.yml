@@ -254,17 +254,66 @@ jobs:
           metadata:
             name: $JOB_NAME
             namespace: glen-system
-            labels:
-              app: glen-db-migrate
           spec:
             activeDeadlineSeconds: 600
             backoffLimit: 2
             template:
               spec:
-                restartPolicy: Never
+                restartPolicy: OnFailure
                 containers:
                 - name: migrator
-                  image: $DOCKER_HUB_USERNAME/glen-migrator:$IMAGE_TAG
+                  image: migrate/migrate:v4.16.2
+                  command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    echo "Starting database migration..."
+                    echo "Job: $JOB_NAME"
+                    echo "Time: \$(date)"
+                    
+                    # Install postgresql client for debugging
+                    apk add --no-cache postgresql-client
+                    
+                    # Test database connection using psql first
+                    RETRIES=0
+                    MAX_RETRIES=10
+                    until PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "SELECT 1;" > /dev/null 2>&1; do
+                      RETRIES=\$((RETRIES + 1))
+                      if [ \$RETRIES -ge \$MAX_RETRIES ]; then
+                        echo "Database connection failed after \$MAX_RETRIES attempts"
+                        echo "Connection details: Host=\$DB_HOST, User=\$DB_USER, DB=\$DB_NAME"
+                        exit 1
+                      fi
+                      echo "Database connection failed, retrying in 5 seconds... (\$RETRIES/\$MAX_RETRIES)"
+                      sleep 5
+                    done
+                    echo "✓ Database connection successful"
+                    
+                    # List migration files
+                    echo "Available migration files:"
+                    ls -la /migrations/
+                    
+                    # Show migration file content
+                    echo "Migration file content:"
+                    for file in /migrations/*.sql; do
+                        echo "=== \$file ==="
+                        head -20 "\$file"
+                        echo ""
+                    done
+                    
+                    # Run migrations
+                    echo "Running migrations..."
+                    migrate -path /migrations -database "postgres://\$DB_USER:\$DB_PASSWORD@\$DB_HOST:5432/\$DB_NAME?sslmode=require" up
+                    
+                    # Verify tables were created
+                    echo "Verifying tables were created..."
+                    PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -c "\\dt"
+                    
+                    # Count final tables
+                    FINAL_COUNT=\$(PGPASSWORD=\$DB_PASSWORD psql -h \$DB_HOST -U \$DB_USER -d \$DB_NAME -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" | xargs)
+                    echo "Final table count: \$FINAL_COUNT"
+                    
+                    echo "Database migration completed successfully at: \$(date)"
                   env:
                   - name: DB_HOST
                     valueFrom:
