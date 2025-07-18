@@ -244,33 +244,30 @@ jobs:
           # Clean up dynamically generated configmap
           rm -f infrastructure/k8s/configmap.yaml
 
-      - name: Upgrade node pool for migration
+      - name: Scale up cluster for migration
         run: |
-          # Current e2-micro nodes don't have enough memory (130%+ usage)
-          # Create a temporary larger node pool for migration
-          gcloud container node-pools create migration-pool \
-            --cluster=glen-cluster \
-            --zone=asia-northeast1-a \
-            --project=glen-465915 \
-            --machine-type=e2-small \
-            --num-nodes=1 \
-            --disk-size=20GB \
-            --quiet
+          # Get current node pool info
+          gcloud container clusters describe glen-cluster --zone asia-northeast1-a --project glen-465915
           
-          # Wait for the new node to be ready
-          echo "Waiting for larger node to be ready..."
-          sleep 90
+          # Scale up node pool to provide more memory
+          gcloud container clusters resize glen-cluster --num-nodes=2 --zone asia-northeast1-a --project glen-465915 --quiet
+          
+          # Wait for nodes to be ready
+          echo "Waiting for nodes to be ready..."
+          sleep 60
           kubectl get nodes
-          
-          # Taint the original e2-micro nodes to prevent scheduling
-          kubectl taint nodes -l cloud.google.com/gke-nodepool=glen-nodes \
-            migration=true:NoSchedule || true
 
       - name: Run database migrations
         run: |
           # Scale down services temporarily to free memory for migration
           kubectl scale deployment --all --replicas=0 -n glen-system || true
           sleep 10
+          
+          # Create glen-secrets Secret (migration only needs DB_PASSWORD)
+          kubectl create secret generic glen-secrets \
+            --namespace=glen-system \
+            --from-literal=DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
           
           # Create ConfigMap from migration files
           kubectl create configmap glen-db-migrations \
@@ -445,20 +442,11 @@ jobs:
           kubectl scale deployment glen-api-gateway --replicas=1 -n glen-system || true
           kubectl scale deployment glen-frontend --replicas=1 -n glen-system || true
 
-      - name: Clean up migration resources
+      - name: Scale down cluster after migration
         run: |
-          # Remove taint from original nodes
-          kubectl taint nodes -l cloud.google.com/gke-nodepool=glen-nodes \
-            migration=true:NoSchedule- || true
-          
-          # Delete the temporary migration node pool
-          gcloud container node-pools delete migration-pool \
-            --cluster=glen-cluster \
-            --zone=asia-northeast1-a \
-            --project=glen-465915 \
-            --quiet
-          
-          echo "Migration node pool cleaned up"
+          # Scale back down to save costs
+          gcloud container clusters resize glen-cluster --num-nodes=1 --zone asia-northeast1-a --project glen-465915 --quiet
+          echo "Cluster scaled back down to 1 node"
 
       - name: Wait for deployment to complete
         run: |
