@@ -246,6 +246,10 @@ jobs:
 
       - name: Run database migrations
         run: |
+          # Scale down services temporarily to free memory for migration
+          kubectl scale deployment --all --replicas=0 -n glen-system || true
+          sleep 10
+          
           # Create ConfigMap from migration files
           kubectl create configmap glen-db-migrations \
             --from-file=tools/migrator/migrations/ \
@@ -412,6 +416,13 @@ jobs:
             kubectl logs -n glen-system job/$JOB_NAME --tail=100
             exit 1
           fi
+          
+          # Scale services back up after migration
+          kubectl scale deployment glen-auth-service --replicas=1 -n glen-system || true
+          kubectl scale deployment glen-user-service --replicas=1 -n glen-system || true
+          kubectl scale deployment glen-social-service --replicas=1 -n glen-system || true
+          kubectl scale deployment glen-api-gateway --replicas=1 -n glen-system || true
+          kubectl scale deployment glen-frontend --replicas=1 -n glen-system || true
 
       - name: Wait for deployment to complete
         run: |
