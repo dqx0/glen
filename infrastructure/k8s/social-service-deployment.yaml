@@ -84,16 +84,16 @@ spec:
             secretKeyRef:
               name: glen-secrets
               key: GOOGLE_CLIENT_SECRET
-        - name: GITHUB_CLIENT_ID
+        - name: _GITHUB_CLIENT_ID
           valueFrom:
             secretKeyRef:
               name: glen-secrets
-              key: GITHUB_CLIENT_ID
-        - name: GITHUB_CLIENT_SECRET
+              key: _GITHUB_CLIENT_ID
+        - name: _GITHUB_CLIENT_SECRET
           valueFrom:
             secretKeyRef:
               name: glen-secrets
-              key: GITHUB_CLIENT_SECRET
+              key: _GITHUB_CLIENT_SECRET
         - name: DISCORD_CLIENT_ID
           valueFrom:
             secretKeyRef:

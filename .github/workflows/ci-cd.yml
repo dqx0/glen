@@ -263,10 +263,19 @@ jobs:
           kubectl scale deployment --all --replicas=0 -n glen-system || true
           sleep 10
           
-          # Create glen-secrets Secret (migration only needs DB_PASSWORD)
+          # Create glen-secrets Secret with all required keys
           kubectl create secret generic glen-secrets \
             --namespace=glen-system \
             --from-literal=DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+            --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            --from-literal=OAUTH_CLIENT_ID="${{ secrets.OAUTH_CLIENT_ID }}" \
+            --from-literal=OAUTH_CLIENT_SECRET="${{ secrets.OAUTH_CLIENT_SECRET }}" \
+            --from-literal=GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
+            --from-literal=GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            --from-literal=_GITHUB_CLIENT_ID="${{ secrets._GITHUB_CLIENT_ID }}" \
+            --from-literal=_GITHUB_CLIENT_SECRET="${{ secrets._GITHUB_CLIENT_SECRET }}" \
+            --from-literal=DISCORD_CLIENT_ID="${{ secrets.DISCORD_CLIENT_ID }}" \
+            --from-literal=DISCORD_CLIENT_SECRET="${{ secrets.DISCORD_CLIENT_SECRET }}" \
             --dry-run=client -o yaml | kubectl apply -f -
           
           # Create ConfigMap from migration files
