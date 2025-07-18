@@ -244,6 +244,19 @@ jobs:
           # Clean up dynamically generated configmap
           rm -f infrastructure/k8s/configmap.yaml
 
+      - name: Scale up cluster for migration
+        run: |
+          # Get current node pool info
+          gcloud container clusters describe glen-cluster --zone asia-northeast1-a --project glen-465915
+          
+          # Scale up node pool to provide more memory
+          gcloud container clusters resize glen-cluster --num-nodes=2 --zone asia-northeast1-a --project glen-465915 --quiet
+          
+          # Wait for nodes to be ready
+          echo "Waiting for nodes to be ready..."
+          sleep 60
+          kubectl get nodes
+
       - name: Run database migrations
         run: |
           # Scale down services temporarily to free memory for migration
@@ -259,7 +272,7 @@ jobs:
           # Clean up any existing failed migration jobs
           kubectl delete job -n glen-system -l app=glen-db-migrate --ignore-not-found=true
           
-          # Create database migration job
+          # Create database migration job with original configuration
           JOB_NAME="glen-db-migrate-$(date +%s)"
           cat <<EOF | kubectl apply -f -
           apiVersion: batch/v1
@@ -286,7 +299,6 @@ jobs:
                     echo "=== Database Migration Started ==="
                     echo "Job: $JOB_NAME"
                     echo "Time: \$(date)"
-                    echo "Environment variables loaded"
                     
                     # Install postgresql client
                     echo "Installing PostgreSQL client..."
@@ -320,7 +332,6 @@ jobs:
                         echo "Fixing dirty database state..."
                         migrate -path /migrations -database "\$DB_URL_NO_SSL" force 20250716000002
                         migrate -path /migrations -database "\$DB_URL_NO_SSL" up
-
                       else
                         echo "Migration failed with unknown error"
                         exit 1
@@ -423,6 +434,12 @@ jobs:
           kubectl scale deployment glen-social-service --replicas=1 -n glen-system || true
           kubectl scale deployment glen-api-gateway --replicas=1 -n glen-system || true
           kubectl scale deployment glen-frontend --replicas=1 -n glen-system || true
+
+      - name: Scale down cluster after migration
+        run: |
+          # Scale back down to save costs
+          gcloud container clusters resize glen-cluster --num-nodes=1 --zone asia-northeast1-a --project glen-465915 --quiet
+          echo "Cluster scaled back down to 1 node"
 
       - name: Wait for deployment to complete
         run: |
