@@ -422,7 +422,6 @@ jobs:
           else
             echo "A record: glen.dqx0.com -> (IP still pending)"
           fi
-          
           echo ""
           echo "✅ CI/CD Pipeline completed successfully"
 
