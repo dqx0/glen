@@ -46,13 +46,6 @@ spec:
             port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
-        resources:
-          requests:
-            memory: "32Mi"
-            cpu: "25m"
-          limits:
-            memory: "32Mi"
-            cpu: "50m"
 ---
 apiVersion: v1
 kind: Service

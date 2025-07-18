@@ -126,13 +126,6 @@ spec:
             port: 8083
           initialDelaySeconds: 5
           periodSeconds: 5
-        resources:
-          requests:
-            memory: "32Mi"
-            cpu: "25m"
-          limits:
-            memory: "64Mi"
-            cpu: "100m"
 ---
 apiVersion: v1
 kind: Service
