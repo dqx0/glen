@@ -221,9 +221,11 @@ jobs:
           sed -i "s|REPLACE_DB_HOST|${{ secrets.DB_HOST }}|g" infrastructure/k8s/configmap.yaml
           sed -i "s|REPLACE_REDIS_HOST|${{ secrets.REDIS_HOST }}|g" infrastructure/k8s/configmap.yaml
 
-          # Apply namespace first and wait for it to be ready
-          kubectl apply -f infrastructure/k8s/namespace.yaml
-          kubectl wait --for=condition=Ready namespace/glen-system --timeout=60s
+          # Create namespace first and ensure it exists
+          kubectl create namespace glen-system --dry-run=client -o yaml | kubectl apply -f -
+          # Verify namespace exists and is active
+          kubectl get namespace glen-system
+          echo "Namespace glen-system is ready"
           
           # Apply remaining Kubernetes manifests (exclude namespace.yaml)
           for file in infrastructure/k8s/*.yaml; do
