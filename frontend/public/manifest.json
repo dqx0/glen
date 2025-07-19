@@ -1,0 +1,78 @@
+{
+  "name": "Glen ID Platform",
+  "short_name": "Glen ID",
+  "description": "WebAuthn-First認証を採用した現代的なアイデンティティプラットフォーム",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "ja",
+  "categories": ["security", "utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "ダッシュボード",
+      "short_name": "Dashboard",
+      "description": "Glen IDダッシュボードに直接アクセス",
+      "url": "/dashboard",
+      "icons": [
+        {
+          "src": "/vite.svg",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "ログイン",
+      "short_name": "Login",
+      "description": "Glen IDにログイン",
+      "url": "/login",
+      "icons": [
+        {
+          "src": "/vite.svg",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "screenshots": [
+    {
+      "src": "/screenshot-wide.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/screenshot-narrow.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ]
+}
