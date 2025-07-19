@@ -59,7 +59,7 @@ dev:
 	@echo "📊 Starting PostgreSQL and Redis..."
 	docker-compose -f infrastructure/docker/docker-compose.dev.yml up -d
 	@echo "⏳ Waiting for database to be ready..."
-	@timeout /t 5 /nobreak > nul 2>&1
+	@sleep 5
 	@echo "✅ Development environment is ready!"
 	@echo ""
 	@echo "📍 Available services:"
@@ -286,7 +286,7 @@ debug:
 	@echo "📊 Starting PostgreSQL and Redis..."
 	docker-compose -f infrastructure/docker/docker-compose.dev.yml up -d
 	@echo "⏳ Waiting for database to be ready..."
-	@timeout /t 5 /nobreak > nul 2>&1
+	@sleep 5
 	@echo "📦 Installing frontend dependencies..."
 	cd frontend && npm install
 	@echo "🎨 Starting frontend development server..."
