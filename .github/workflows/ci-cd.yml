@@ -94,7 +94,7 @@ jobs:
         run: make test-coverage
 
   build:
-    # needs: test  # Temporarily skip tests for faster deployment
+    needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
