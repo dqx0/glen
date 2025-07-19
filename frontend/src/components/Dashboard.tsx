@@ -169,7 +169,7 @@ const Dashboard: React.FC = () => {
                   color: '#1f2937',
                   margin: 0
                 }}>
-                  Glen ID ダッシュボード
+                  Glen ダッシュボード
                 </h1>
               </div>
               <button
