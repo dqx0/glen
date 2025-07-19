@@ -94,3 +94,5 @@ infrastructure/terraform/*.tfplan
 # k8s
 infrastructure/k8s/*.yaml.bak
 infrastructure/k8s/configmap.yaml  # 実際のIPアドレスを含むため除外
+
+.claude
