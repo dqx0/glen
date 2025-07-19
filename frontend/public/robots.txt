@@ -1,8 +1,0 @@
-User-agent: *
-Allow: /
-Allow: /login
-Allow: /register
-Disallow: /dashboard
-Disallow: /api/
-
-Sitemap: https://glen.dqx0.com/sitemap.xml

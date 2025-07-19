@@ -1,16 +1,7 @@
 {
-  "name": "glen-id-platform-frontend",
-  "description": "Glen ID Platform - WebAuthn認証プラットフォームのフロントエンド",
-  "version": "1.0.0",
-  "author": "dqx0",
-  "license": "MIT",
-  "keywords": ["webauthn", "authentication", "oauth2", "fido2", "security"],
-  "homepage": "https://glen.dqx0.com",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/dqx0/glen"
-  },
+  "name": "frontend",
   "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
