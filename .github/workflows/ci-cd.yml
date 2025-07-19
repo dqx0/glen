@@ -246,19 +246,15 @@ jobs:
 
       - name: Setup database migration
         run: |
-          # Create secrets
+          # Update only database-related secrets, preserve existing OAuth secrets
+          kubectl patch secret glen-secrets \
+            --namespace=glen-system \
+            --type='merge' \
+            -p="{\"data\":{\"DB_PASSWORD\":\"$(echo -n '${{ secrets.DB_PASSWORD }}' | base64 -w 0)\",\"JWT_SECRET\":\"$(echo -n '${{ secrets.JWT_SECRET }}' | base64 -w 0)\"}}" || \
           kubectl create secret generic glen-secrets \
             --namespace=glen-system \
             --from-literal=DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
             --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
-            --from-literal=OAUTH_CLIENT_ID="${{ secrets.OAUTH_CLIENT_ID }}" \
-            --from-literal=OAUTH_CLIENT_SECRET="${{ secrets.OAUTH_CLIENT_SECRET }}" \
-            --from-literal=GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
-            --from-literal=GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
-            --from-literal=_GITHUB_CLIENT_ID="${{ secrets._GITHUB_CLIENT_ID }}" \
-            --from-literal=_GITHUB_CLIENT_SECRET="${{ secrets._GITHUB_CLIENT_SECRET }}" \
-            --from-literal=DISCORD_CLIENT_ID="${{ secrets.DISCORD_CLIENT_ID }}" \
-            --from-literal=DISCORD_CLIENT_SECRET="${{ secrets.DISCORD_CLIENT_SECRET }}" \
             --dry-run=client -o yaml | kubectl apply -f -
           
           # Create ConfigMap from migration files
